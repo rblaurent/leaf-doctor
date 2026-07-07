@@ -1,0 +1,9 @@
+{
+  "name": "leaf-doctor",
+  "version": "1.0.0",
+  "description": "Emergency recovery service for the Leaf suite",
+  "main": "leaf-doctor.js",
+  "scripts": {
+    "start": "node leaf-doctor.js"
+  }
+}

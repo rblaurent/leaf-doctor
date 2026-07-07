@@ -1,0 +1,452 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Leaf Doctor</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link href="https://unpkg.com/@phosphor-icons/web@2.1.1/src/fill/style.css" rel="stylesheet">
+<style>
+  :root {
+    --bg: #262830;
+    --surface: #2E3038;
+    --elevated: #363842;
+    --border: #43454F;
+    --text: #D0D1D6;
+    --muted: #9B9CA2;
+    --disabled: #6B6F77;
+
+    --brand: #4A9D5B;
+    --accent-teal: #26A69A;
+    --accent-red: #E55B5B;
+    --accent-gold: #D4AA4F;
+    --accent-nova: #C74B7A;
+    --accent-purple: #7C4DFF;
+
+    --radius-sm: 0.45rem;
+    --radius-md: 0.6rem;
+    --radius-lg: 0.75rem;
+    --radius-xl: 1.05rem;
+    --radius-2xl: 1.35rem;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    min-height: 100dvh;
+    padding: 24px;
+    padding: max(24px, env(safe-area-inset-top)) max(24px, env(safe-area-inset-right)) max(24px, env(safe-area-inset-bottom)) max(24px, env(safe-area-inset-left));
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .container {
+    max-width: 420px;
+    margin: 0 auto;
+  }
+
+  .header {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 12px 0 20px;
+  }
+  .header-icon {
+    width: 44px;
+    height: 44px;
+    border-radius: var(--radius-lg);
+    background: rgba(74, 157, 91, 0.12);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    font-size: 20px;
+    color: var(--brand);
+  }
+  .header h1 {
+    font-size: 18px;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    line-height: 1.2;
+  }
+  .header .sub {
+    color: var(--muted);
+    font-size: 12px;
+    font-weight: 400;
+    margin-top: 2px;
+  }
+
+  .status-banner {
+    padding: 11px 16px;
+    margin: 0 0 20px;
+    border-radius: var(--radius-xl);
+    font-size: 13px;
+    font-weight: 500;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .status-banner .dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+  .status-banner.healthy { background: rgba(74,157,91,0.10); color: var(--brand); }
+  .status-banner.healthy .dot { background: var(--brand); box-shadow: 0 0 8px rgba(74,157,91,0.4); }
+  .status-banner.degraded { background: rgba(212,170,79,0.10); color: var(--accent-gold); }
+  .status-banner.degraded .dot { background: var(--accent-gold); box-shadow: 0 0 8px rgba(212,170,79,0.4); }
+  .status-banner.down { background: rgba(229,91,91,0.10); color: var(--accent-red); }
+  .status-banner.down .dot { background: var(--accent-red); box-shadow: 0 0 8px rgba(229,91,91,0.4); }
+
+  .card {
+    background: var(--surface);
+    border-radius: var(--radius-xl);
+    box-shadow: 0 0 0 1px rgba(255,255,255,0.05);
+    overflow: hidden;
+  }
+  .card-header {
+    padding: 14px 18px 6px;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--muted);
+  }
+
+  .svc-list { margin-bottom: 20px; }
+  .svc {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 11px 18px;
+    border-bottom: 1px solid rgba(255,255,255,0.04);
+  }
+  .svc:last-child { border-bottom: none; }
+  .svc-left {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-width: 0;
+  }
+  .svc-icon {
+    width: 32px;
+    height: 32px;
+    border-radius: var(--radius-md);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 15px;
+    flex-shrink: 0;
+  }
+  .svc-icon.pg { background: rgba(38,166,154,0.12); color: var(--accent-teal); }
+  .svc-icon.rl { background: rgba(74,157,91,0.12); color: var(--brand); }
+  .svc-icon.rc { background: rgba(229,91,91,0.12); color: var(--accent-red); }
+  .svc-icon.nv { background: rgba(199,75,122,0.12); color: var(--accent-nova); }
+  .svc-icon.cf { background: rgba(212,170,79,0.12); color: var(--accent-gold); }
+  .svc-name {
+    font-size: 13px;
+    font-weight: 500;
+  }
+  .svc-detail {
+    font-size: 11px;
+    color: var(--disabled);
+    margin-top: 1px;
+  }
+  .badge {
+    font-size: 10px;
+    font-weight: 600;
+    padding: 3px 8px;
+    border-radius: 9999px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    flex-shrink: 0;
+  }
+  .badge.up { background: rgba(74,157,91,0.12); color: var(--brand); }
+  .badge.down { background: rgba(229,91,91,0.12); color: var(--accent-red); }
+
+  .actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    margin: 0 0 20px;
+  }
+  button {
+    padding: 13px 16px;
+    border: none;
+    border-radius: var(--radius-xl);
+    font-family: 'Inter', system-ui, sans-serif;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    color: white;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+  }
+  button:active { transform: scale(0.97); }
+  button:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
+  button i { font-size: 15px; }
+  .btn-diagnose {
+    background: var(--elevated);
+    color: var(--text);
+    box-shadow: 0 0 0 1px rgba(255,255,255,0.08);
+  }
+  .btn-restart {
+    background: var(--accent-red);
+  }
+  .btn-doctor {
+    grid-column: 1 / -1;
+    background: rgba(124,77,255,0.12);
+    color: var(--accent-purple);
+    box-shadow: 0 0 0 1px rgba(124,77,255,0.18);
+  }
+
+  .output {
+    margin: 0 0 20px;
+    padding: 16px;
+    background: var(--bg);
+    border-radius: var(--radius-lg);
+    box-shadow: inset 0 0 0 1px rgba(255,255,255,0.04);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    line-height: 1.7;
+    white-space: pre-wrap;
+    word-break: break-word;
+    max-height: 45vh;
+    overflow-y: auto;
+    display: none;
+    color: var(--muted);
+  }
+
+  .spinner {
+    display: inline-block;
+    width: 13px;
+    height: 13px;
+    border: 2px solid rgba(255,255,255,0.15);
+    border-top-color: currentColor;
+    border-radius: 50%;
+    animation: spin 0.6s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .timestamp {
+    text-align: center;
+    color: var(--disabled);
+    font-size: 11px;
+    padding-bottom: 12px;
+  }
+</style>
+</head>
+<body>
+<div class="container">
+  <div class="header">
+    <div class="header-icon">
+      <i class="ph-fill ph-first-aid"></i>
+    </div>
+    <div>
+      <h1>Leaf Doctor</h1>
+      <div class="sub">Emergency Recovery</div>
+    </div>
+  </div>
+
+  <div id="overall" class="status-banner down">
+    <span class="dot"></span>
+    <span>Checking...</span>
+  </div>
+
+  <div class="card svc-list">
+    <div class="card-header">Services</div>
+    <div id="services"></div>
+  </div>
+
+  <div class="actions">
+    <button class="btn-diagnose" onclick="runDiagnose()"><i class="ph-fill ph-magnifying-glass"></i> Diagnose</button>
+    <button class="btn-restart" onclick="confirmRestart()"><i class="ph-fill ph-arrow-clockwise"></i> Restart</button>
+    <button class="btn-doctor" onclick="runDoctorSession()"><i class="ph-fill ph-brain"></i> Claude Code Doctor</button>
+  </div>
+
+  <div id="output" class="output"></div>
+  <div id="timestamp" class="timestamp"></div>
+</div>
+
+<script>
+const TOKEN = '{{AUTH_TOKEN}}';
+const BASE = window.location.origin;
+
+function api(path, method = 'GET') {
+  return fetch(`${BASE}${path}?token=${TOKEN}`, { method })
+    .then(r => method === 'POST' && path === '/diagnose' ? r.text() : r.json());
+}
+
+const SVC_META = {
+  postgres:   { label: 'PostgreSQL',  cls: 'pg', icon: 'ph-fill ph-database' },
+  redleaf:    { label: 'Leaf Kernel', cls: 'rl', icon: 'ph-fill ph-leaf' },
+  redcompute: { label: 'Compute',     cls: 'rc', icon: 'ph-fill ph-cpu' },
+  codered:    { label: 'CodeRed',     cls: 'rc', icon: 'ph-fill ph-code' },
+  nova:       { label: 'Nova',        cls: 'nv', icon: 'ph-fill ph-star-four' },
+  apis:       { label: 'APIs',        cls: 'rl', icon: 'ph-fill ph-plugs-connected' },
+  tunnel:     { label: 'CF Tunnel',   cls: 'cf', icon: 'ph-fill ph-cloud-arrow-up' },
+};
+
+function detailFor(key, svc) {
+  if (key === 'postgres') return svc.up ? svc.detail : 'Container stopped';
+  if (key === 'redleaf') return svc.up ? `Port ${svc.port}` : 'Not responding';
+  if (key === 'redcompute') return svc.up ? `Port ${svc.port}` : 'Not responding';
+  if (key === 'codered') return svc.up ? 'Plugin loaded' : 'Not responding';
+  if (key === 'nova') return svc.up ? 'Plugin loaded' : 'Not responding';
+  if (key === 'apis') {
+    if (!svc.checks || !svc.checks.length) return svc.up ? 'All OK' : 'No checks';
+    const ok = svc.checks.filter(c => c.up).length;
+    return svc.up ? `${ok}/${svc.checks.length} passing` : `${ok}/${svc.checks.length} passing`;
+  }
+  if (key === 'tunnel') return svc.up ? 'Connected' : 'Disconnected';
+  return '';
+}
+
+function renderServices(data) {
+  const el = document.getElementById('services');
+  const overall = document.getElementById('overall');
+  const svc = data.services;
+
+  el.innerHTML = Object.entries(SVC_META).map(([key, meta]) => `
+    <div class="svc">
+      <div class="svc-left">
+        <div class="svc-icon ${meta.cls}"><i class="${meta.icon}"></i></div>
+        <div>
+          <div class="svc-name">${meta.label}</div>
+          <div class="svc-detail">${detailFor(key, svc[key])}</div>
+        </div>
+      </div>
+      <span class="badge ${svc[key].up ? 'up' : 'down'}">${svc[key].up ? 'UP' : 'DOWN'}</span>
+    </div>
+  `).join('');
+
+  const upCount = Object.values(svc).filter(s => s.up).length;
+  const total = Object.keys(svc).length;
+  if (upCount === total) {
+    overall.className = 'status-banner healthy';
+    overall.innerHTML = '<span class="dot"></span><span>All Systems Operational</span>';
+  } else if (upCount > 0) {
+    overall.className = 'status-banner degraded';
+    overall.innerHTML = `<span class="dot"></span><span>Degraded — ${upCount}/${total} services</span>`;
+  } else {
+    overall.className = 'status-banner down';
+    overall.innerHTML = '<span class="dot"></span><span>All Services Down</span>';
+  }
+
+  document.getElementById('timestamp').textContent = `Last check: ${new Date(data.timestamp).toLocaleTimeString()}`;
+}
+
+async function refresh() {
+  try {
+    const data = await api('/status');
+    renderServices(data);
+  } catch (e) {
+    const o = document.getElementById('overall');
+    o.className = 'status-banner down';
+    o.innerHTML = '<span class="dot"></span><span>Doctor service unreachable</span>';
+  }
+}
+
+function showOutput(text) {
+  const el = document.getElementById('output');
+  el.style.display = 'block';
+  el.textContent = text;
+  el.scrollTop = el.scrollHeight;
+}
+
+async function runDiagnose() {
+  const btn = document.querySelector('.btn-diagnose');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span> Running';
+  try {
+    const report = await api('/diagnose', 'POST');
+    showOutput(report);
+  } catch (e) {
+    showOutput('Error: ' + e.message);
+  }
+  btn.disabled = false;
+  btn.innerHTML = '<i class="ph-fill ph-magnifying-glass"></i> Diagnose';
+}
+
+async function confirmRestart() {
+  if (!confirm('Restart the entire Leaf suite? This will kill RedLeaf and all plugins, then relaunch.')) return;
+  const btn = document.querySelector('.btn-restart');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span> Restarting';
+  try {
+    const result = await api('/restart', 'POST');
+    let msg = result.steps.join('\n');
+    if (result.success) {
+      msg += '\n\nRESTART SUCCESSFUL';
+    } else {
+      msg += '\n\nRESTART FAILED';
+      if (result.doctorHint) {
+        msg += '\n' + result.doctorHint;
+      }
+    }
+    showOutput(msg);
+    setTimeout(refresh, 3000);
+  } catch (e) {
+    showOutput('Error: ' + e.message);
+  }
+  btn.disabled = false;
+  btn.innerHTML = '<i class="ph-fill ph-arrow-clockwise"></i> Restart';
+}
+
+async function runDoctorSession() {
+  const btn = document.querySelector('.btn-doctor');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span> Session starting...';
+  try {
+    const result = await api('/doctor', 'POST');
+    if (result.status === 'already_running') {
+      showOutput('Doctor session already in progress. Polling for output...');
+    } else if (result.status === 'error') {
+      showOutput('Error: ' + result.message);
+      btn.disabled = false;
+      btn.innerHTML = '<i class="ph-fill ph-brain"></i> Claude Code Doctor';
+      return;
+    } else {
+      showOutput('Claude Code doctor session started. Polling for output...');
+    }
+    pollDoctor();
+  } catch (e) {
+    showOutput('Error: ' + e.message);
+    btn.disabled = false;
+    btn.innerHTML = '<i class="ph-fill ph-brain"></i> Claude Code Doctor';
+  }
+}
+
+async function pollDoctor() {
+  const btn = document.querySelector('.btn-doctor');
+  try {
+    const status = await api('/doctor/status');
+    if (status.running) {
+      showOutput(status.outputSoFar || 'Doctor is working...');
+      btn.innerHTML = '<span class="spinner"></span> Doctor working...';
+      setTimeout(pollDoctor, 3000);
+    } else {
+      btn.disabled = false;
+      btn.innerHTML = '<i class="ph-fill ph-brain"></i> Claude Code Doctor';
+      if (status.outputSoFar) showOutput(status.outputSoFar);
+      setTimeout(refresh, 2000);
+    }
+  } catch {
+    setTimeout(pollDoctor, 5000);
+  }
+}
+
+refresh();
+setInterval(refresh, 10000);
+</script>
+</body>
+</html>
