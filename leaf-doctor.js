@@ -185,7 +185,7 @@ async function diagnose() {
   return report.join('\n');
 }
 
-async function restart() {
+async function restart({ rebuild = true } = {}) {
   const steps = [];
   const svc = config.services;
 
@@ -218,6 +218,25 @@ async function restart() {
     steps.push('Stopping RedLeaf...');
     exec('taskkill /IM RedLeaf.exe /F');
     await new Promise(r => setTimeout(r, 3000));
+  }
+
+  // Step 3.5: Rebuild RedLeaf kernel
+  if (rebuild) {
+    const slnPath = config.paths.redleafSln || 'T:/Projects/redleaf/RedLeaf.sln';
+    steps.push(`Rebuilding RedLeaf kernel (${slnPath})...`);
+    const buildResult = exec(
+      `dotnet build "${slnPath}" -c Release --nologo -v quiet`,
+      { timeout: 120000 }
+    );
+    if (!buildResult.ok) {
+      steps.push(`BUILD FAILED: ${buildResult.output}`);
+      steps.push('Aborting restart — the old binary is safer than a failed build.');
+      steps.push('Fix the build errors and retry, or restart with rebuild=false for a quick process bounce.');
+      return { success: false, steps };
+    }
+    steps.push('Rebuild succeeded');
+  } else {
+    steps.push('Rebuild skipped (rebuild=false)');
   }
 
   // Step 4: Start RedLeaf
@@ -272,7 +291,10 @@ async function restart() {
   // Step 8: Notify via Nova if available
   if (ready) {
     try {
-      const body = JSON.stringify({ content: 'Leaf Doctor: Emergency restart completed. All services verified.', source: 'leaf-doctor' });
+      const msg = rebuild
+        ? 'Leaf Doctor: Emergency restart completed (with rebuild). All services verified.'
+        : 'Leaf Doctor: Emergency restart completed (quick bounce). All services verified.';
+      const body = JSON.stringify({ content: msg, source: 'leaf-doctor' });
       const req = http.request({
         hostname: '127.0.0.1',
         port: svc.redleaf.port,
@@ -399,7 +421,17 @@ const server = http.createServer(async (req, res) => {
     }
 
     if (req.method === 'POST' && url.pathname === '/restart') {
-      const result = await restart();
+      let body = '';
+      for await (const chunk of req) body += chunk;
+      let opts = {};
+      if (body) {
+        try { opts = JSON.parse(body); } catch {}
+      }
+      const rebuildParam = url.searchParams.get('rebuild');
+      if (rebuildParam !== null) {
+        opts.rebuild = rebuildParam !== 'false';
+      }
+      const result = await restart({ rebuild: opts.rebuild !== false });
       if (!result.success) {
         result.doctorAvailable = true;
         result.doctorHint = 'Restart failed. Hit the Doctor button to spawn a Claude Code session for deep diagnosis.';
