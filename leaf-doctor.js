@@ -1,4 +1,5 @@
 const http = require('http');
+const net = require('net');
 const { execSync, spawn } = require('child_process');
 const fs = require('fs');
 const path = require('path');
@@ -52,6 +53,17 @@ function exec(cmd, opts = {}) {
   }
 }
 
+function checkPostgres(port) {
+  return new Promise(resolve => {
+    const sock = net.createConnection({ host: '127.0.0.1', port, timeout: 3000 }, () => {
+      sock.destroy();
+      resolve(true);
+    });
+    sock.on('error', () => resolve(false));
+    sock.on('timeout', () => { sock.destroy(); resolve(false); });
+  });
+}
+
 async function getStatus() {
   const svc = config.services;
   const [redleaf, redcompute, nova, codered] = await Promise.all([
@@ -67,8 +79,8 @@ async function getStatus() {
   );
   const apisOk = apiResults.length === 0 || apiResults.every(r => r.up);
 
-  const pgResult = exec(`docker ps --filter "name=${svc.postgres.container}" --format "{{.Status}}"`);
-  const postgres = pgResult.ok && pgResult.output.toLowerCase().includes('up');
+  const pgPort = svc.postgres.port || 18832;
+  const postgres = await checkPostgres(pgPort);
 
   const cfResult = exec('tasklist /FI "IMAGENAME eq cloudflared.exe" /NH');
   const tunnelRunning = cfResult.ok && cfResult.output.includes('cloudflared');
@@ -76,7 +88,7 @@ async function getStatus() {
   return {
     timestamp: new Date().toISOString(),
     services: {
-      postgres: { up: postgres, detail: pgResult.output || 'not found' },
+      postgres: { up: postgres, port: pgPort },
       redleaf: { up: redleaf, port: svc.redleaf.port },
       redcompute: { up: redcompute, port: svc.redcompute.port },
       codered: { up: codered },
@@ -96,16 +108,19 @@ async function diagnose() {
   report.push(`Timestamp: ${new Date().toISOString()}`);
   report.push('');
 
-  // PostgreSQL
+  // PostgreSQL (managed child process of RedLeaf)
   report.push('--- PostgreSQL ---');
-  const pgExists = exec(`docker ps -a --filter "name=${svc.postgres.container}" --format "{{.Status}}"`);
-  if (!pgExists.ok || !pgExists.output) {
-    report.push('CRITICAL: Container does not exist');
-  } else if (!pgExists.output.toLowerCase().includes('up')) {
-    report.push(`DOWN: Container exists but stopped (${pgExists.output})`);
-    report.push('FIX: Run docker start ' + svc.postgres.container);
+  const pgPort = svc.postgres.port || 18832;
+  const pgProc = exec(`tasklist /FI "IMAGENAME eq ${svc.postgres.process || 'postgres.exe'}" /NH`);
+  const pgProcessRunning = pgProc.ok && pgProc.output.includes('postgres');
+  const pgListening = await checkPostgres(pgPort);
+  if (!pgProcessRunning) {
+    report.push(`DOWN: postgres.exe not running (managed by RedLeaf, starts automatically)`);
+    report.push('FIX: Restart RedLeaf — it will spawn Postgres on boot');
+  } else if (!pgListening) {
+    report.push(`WARNING: postgres.exe running but not accepting connections on port ${pgPort}`);
   } else {
-    report.push(`OK: ${pgExists.output}`);
+    report.push(`OK: Running and accepting connections on port ${pgPort}`);
   }
   report.push('');
 
@@ -170,8 +185,6 @@ async function diagnose() {
 
   // System
   report.push('--- System ---');
-  const dockerRunning = exec('docker info --format "{{.ServerVersion}}"');
-  report.push(dockerRunning.ok ? `Docker: ${dockerRunning.output}` : 'Docker: NOT RUNNING');
 
   const diskT = exec('powershell -NoProfile -Command "(Get-PSDrive T -ErrorAction SilentlyContinue).Free / 1GB"');
   if (diskT.ok && diskT.output) report.push(`T: drive free: ${parseFloat(diskT.output).toFixed(1)} GB`);
@@ -189,71 +202,52 @@ async function restart({ rebuild = true } = {}) {
   const steps = [];
   const svc = config.services;
 
-  // Step 1: Ensure Docker is running
-  const dockerCheck = exec('docker info --format "{{.ServerVersion}}"');
-  if (!dockerCheck.ok) {
-    steps.push('Starting Docker Desktop...');
-    exec('powershell -NoProfile -Command "Start-Process \\"C:\\Program Files\\Docker\\Docker\\Docker Desktop.exe\\""');
-    // Wait for Docker to be ready
-    for (let i = 0; i < 30; i++) {
-      await new Promise(r => setTimeout(r, 2000));
-      if (exec('docker info --format "{{.ServerVersion}}"').ok) break;
-    }
-  }
-
-  // Step 2: Ensure PostgreSQL
-  const pgStatus = exec(`docker ps --filter "name=${svc.postgres.container}" --format "{{.Status}}"`);
-  if (!pgStatus.ok || !pgStatus.output.toLowerCase().includes('up')) {
-    steps.push('Starting PostgreSQL container...');
-    const pgStart = exec(`docker start ${svc.postgres.container}`);
-    steps.push(pgStart.ok ? 'PostgreSQL started' : `PostgreSQL failed: ${pgStart.output}`);
-    await new Promise(r => setTimeout(r, 3000));
-  } else {
-    steps.push('PostgreSQL already running');
-  }
-
-  // Step 3: Kill existing RedLeaf
-  const rlProc = exec('tasklist /FI "IMAGENAME eq RedLeaf.exe" /NH');
-  if (rlProc.ok && rlProc.output.includes('RedLeaf')) {
-    steps.push('Stopping RedLeaf...');
-    exec('taskkill /IM RedLeaf.exe /F');
-    await new Promise(r => setTimeout(r, 3000));
-  }
-
-  // Step 3.5: Rebuild RedLeaf kernel
+  // Step 1: Rebuild and restart via rebuild.ps1 (handles stop, build, relaunch)
   if (rebuild) {
-    const slnPath = config.paths.redleafSln || 'T:/Projects/redleaf/RedLeaf.sln';
-    steps.push(`Rebuilding RedLeaf kernel (${slnPath})...`);
+    const rebuildScript = config.paths.rebuildScript || 'T:/Projects/redleaf/rebuild.ps1';
+    if (!fs.existsSync(rebuildScript)) {
+      steps.push(`CRITICAL: Rebuild script not found at ${rebuildScript}`);
+      steps.push('Manual rebuild needed: run T:\\Projects\\redleaf\\rebuild.bat');
+      return { success: false, steps };
+    }
+
+    steps.push(`Running full rebuild (${rebuildScript})...`);
     const buildResult = exec(
-      `dotnet build "${slnPath}" -c Release --nologo -v quiet`,
-      { timeout: 120000 }
+      `powershell -NoProfile -ExecutionPolicy Bypass -File "${rebuildScript}" -SkipPlugins`,
+      { timeout: 300000 }
     );
     if (!buildResult.ok) {
       steps.push(`BUILD FAILED: ${buildResult.output}`);
-      steps.push('Aborting restart — the old binary is safer than a failed build.');
+      steps.push('Aborting — the old binary is safer than a failed build.');
       steps.push('Fix the build errors and retry, or restart with rebuild=false for a quick process bounce.');
       return { success: false, steps };
     }
-    steps.push('Rebuild succeeded');
+    steps.push('Rebuild succeeded (frontend + backend + relaunch)');
   } else {
-    steps.push('Rebuild skipped (rebuild=false)');
-  }
+    // Quick bounce: just kill and relaunch
+    steps.push('Rebuild skipped (rebuild=false), quick process bounce');
 
-  // Step 4: Start RedLeaf
-  if (!fs.existsSync(config.paths.redleafExe)) {
-    steps.push(`CRITICAL: RedLeaf exe not found at ${config.paths.redleafExe}`);
-    steps.push('Manual rebuild needed: run T:\\Projects\\redleaf\\rebuild.bat');
-    return { success: false, steps };
-  }
+    const rlProc = exec('tasklist /FI "IMAGENAME eq RedLeaf.exe" /NH');
+    if (rlProc.ok && rlProc.output.includes('RedLeaf')) {
+      steps.push('Stopping RedLeaf...');
+      exec('taskkill /IM RedLeaf.exe /F');
+      await new Promise(r => setTimeout(r, 3000));
+    }
 
-  steps.push('Starting RedLeaf...');
-  const rl = spawn(config.paths.redleafExe, [], {
-    detached: true,
-    stdio: 'ignore',
-    cwd: path.dirname(config.paths.redleafExe),
-  });
-  rl.unref();
-  steps.push(`RedLeaf spawned (PID ${rl.pid})`);
+    if (!fs.existsSync(config.paths.redleafExe)) {
+      steps.push(`CRITICAL: RedLeaf exe not found at ${config.paths.redleafExe}`);
+      return { success: false, steps };
+    }
+
+    steps.push('Starting RedLeaf...');
+    const rl = spawn(config.paths.redleafExe, [], {
+      detached: true,
+      stdio: 'ignore',
+      cwd: path.dirname(config.paths.redleafExe),
+    });
+    rl.unref();
+    steps.push(`RedLeaf spawned (PID ${rl.pid})`);
+  }
 
   // Step 5: Wait for RedLeaf to respond
   steps.push('Waiting for RedLeaf to come online...');

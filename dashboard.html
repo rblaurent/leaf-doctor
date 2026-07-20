@@ -297,7 +297,7 @@ const SVC_META = {
 };
 
 function detailFor(key, svc) {
-  if (key === 'postgres') return svc.up ? svc.detail : 'Container stopped';
+  if (key === 'postgres') return svc.up ? `Port ${svc.port}` : 'Not responding';
   if (key === 'redleaf') return svc.up ? `Port ${svc.port}` : 'Not responding';
   if (key === 'redcompute') return svc.up ? `Port ${svc.port}` : 'Not responding';
   if (key === 'codered') return svc.up ? 'Plugin loaded' : 'Not responding';
