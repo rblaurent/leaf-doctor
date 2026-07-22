@@ -319,7 +319,9 @@ function runDoctor() {
     return { status: 'already_running', message: 'A doctor session is already in progress.' };
   }
 
-  const promptPath = path.resolve(config.paths.doctorPrompt || path.join(__dirname, 'doctor-prompt.md'));
+  // Resolve against __dirname, not cwd -- the doctor is spawned detached and can
+  // inherit an arbitrary working directory from whatever started it.
+  const promptPath = path.resolve(__dirname, config.paths.doctorPrompt || 'doctor-prompt.md');
   if (!fs.existsSync(promptPath)) {
     return { status: 'error', message: `Doctor prompt not found at ${promptPath}` };
   }
