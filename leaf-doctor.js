@@ -213,7 +213,7 @@ async function restart({ rebuild = true } = {}) {
 
     steps.push(`Running full rebuild (${rebuildScript})...`);
     const buildResult = exec(
-      `powershell -NoProfile -ExecutionPolicy Bypass -File "${rebuildScript}" -SkipPlugins`,
+      `powershell -NoProfile -ExecutionPolicy Bypass -File "${rebuildScript}"`,
       { timeout: 300000 }
     );
     if (!buildResult.ok) {
