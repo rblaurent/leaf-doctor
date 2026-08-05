@@ -203,7 +203,6 @@
     background: var(--accent-red);
   }
   .btn-doctor {
-    grid-column: 1 / -1;
     background: rgba(124,77,255,0.12);
     color: var(--accent-purple);
     box-shadow: 0 0 0 1px rgba(124,77,255,0.18);
@@ -270,7 +269,8 @@
   <div class="actions">
     <button class="btn-diagnose" onclick="runDiagnose()"><i class="ph-fill ph-magnifying-glass"></i> Diagnose</button>
     <button class="btn-restart" onclick="confirmRestart()"><i class="ph-fill ph-arrow-clockwise"></i> Restart</button>
-    <button class="btn-doctor" onclick="runDoctorSession()"><i class="ph-fill ph-brain"></i> Claude Code Doctor</button>
+    <button class="btn-doctor" data-provider="claude" onclick="runDoctorSession('claude')"><i class="ph-fill ph-brain"></i> Claude Code Doctor</button>
+    <button class="btn-doctor" data-provider="codex" onclick="runDoctorSession('codex')"><i class="ph-fill ph-terminal-window"></i> Codex Doctor</button>
   </div>
 
   <div id="output" class="output"></div>
@@ -282,7 +282,9 @@ const TOKEN = '{{AUTH_TOKEN}}';
 const BASE = window.location.origin;
 
 function api(path, method = 'GET') {
-  return fetch(`${BASE}${path}?token=${TOKEN}`, { method })
+  const url = new URL(path, BASE);
+  url.searchParams.set('token', TOKEN);
+  return fetch(url, { method })
     .then(r => method === 'POST' && path === '/diagnose' ? r.text() : r.json());
 }
 
@@ -402,46 +404,54 @@ async function confirmRestart() {
   btn.innerHTML = '<i class="ph-fill ph-arrow-clockwise"></i> Restart';
 }
 
-async function runDoctorSession() {
-  const btn = document.querySelector('.btn-doctor');
-  btn.disabled = true;
-  btn.innerHTML = '<span class="spinner"></span> Session starting...';
+function setDoctorButtons({ disabled, activeProvider = null, working = false } = {}) {
+  document.querySelectorAll('.btn-doctor').forEach(btn => {
+    const provider = btn.dataset.provider;
+    const label = provider === 'codex' ? 'Codex Doctor' : 'Claude Code Doctor';
+    const icon = provider === 'codex' ? 'ph-terminal-window' : 'ph-brain';
+    btn.disabled = disabled;
+    btn.innerHTML = working && provider === activeProvider
+      ? '<span class="spinner"></span> Doctor working...'
+      : `<i class="ph-fill ${icon}"></i> ${label}`;
+  });
+}
+
+async function runDoctorSession(provider) {
+  setDoctorButtons({ disabled: true, activeProvider: provider, working: true });
   try {
-    const result = await api('/doctor', 'POST');
+    const result = await api(`/doctor?provider=${encodeURIComponent(provider)}`, 'POST');
     if (result.status === 'already_running') {
-      showOutput('Doctor session already in progress. Polling for output...');
+      showOutput(`${result.providerLabel || 'Doctor'} session already in progress. Polling for output...`);
+      provider = result.provider || provider;
     } else if (result.status === 'error') {
       showOutput('Error: ' + result.message);
-      btn.disabled = false;
-      btn.innerHTML = '<i class="ph-fill ph-brain"></i> Claude Code Doctor';
+      setDoctorButtons({ disabled: false });
       return;
     } else {
-      showOutput('Claude Code doctor session started. Polling for output...');
+      showOutput(`${result.providerLabel} doctor session started. Polling for output...`);
     }
-    pollDoctor();
+    pollDoctor(provider);
   } catch (e) {
     showOutput('Error: ' + e.message);
-    btn.disabled = false;
-    btn.innerHTML = '<i class="ph-fill ph-brain"></i> Claude Code Doctor';
+    setDoctorButtons({ disabled: false });
   }
 }
 
-async function pollDoctor() {
-  const btn = document.querySelector('.btn-doctor');
+async function pollDoctor(provider) {
   try {
     const status = await api('/doctor/status');
     if (status.running) {
       showOutput(status.outputSoFar || 'Doctor is working...');
-      btn.innerHTML = '<span class="spinner"></span> Doctor working...';
-      setTimeout(pollDoctor, 3000);
+      provider = status.provider || provider;
+      setDoctorButtons({ disabled: true, activeProvider: provider, working: true });
+      setTimeout(() => pollDoctor(provider), 3000);
     } else {
-      btn.disabled = false;
-      btn.innerHTML = '<i class="ph-fill ph-brain"></i> Claude Code Doctor';
+      setDoctorButtons({ disabled: false });
       if (status.outputSoFar) showOutput(status.outputSoFar);
       setTimeout(refresh, 2000);
     }
   } catch {
-    setTimeout(pollDoctor, 5000);
+    setTimeout(() => pollDoctor(provider), 5000);
   }
 }
 

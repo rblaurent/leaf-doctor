@@ -4,6 +4,7 @@
   "description": "Emergency recovery service for the Leaf suite",
   "main": "leaf-doctor.js",
   "scripts": {
-    "start": "node leaf-doctor.js"
+    "start": "node leaf-doctor.js",
+    "test": "node --test"
   }
 }

@@ -11,6 +11,21 @@ const DASHBOARD_PATH = path.join(__dirname, 'dashboard.html');
 let config = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8'));
 let tunnelProc = null;
 
+const DOCTOR_PROVIDERS = {
+  claude: {
+    id: 'claude',
+    label: 'Claude Code',
+    command: 'claude',
+    args: ['--print', '--dangerously-skip-permissions'],
+  },
+  codex: {
+    id: 'codex',
+    label: 'Codex',
+    command: 'codex',
+    args: ['exec', '--dangerously-bypass-approvals-and-sandbox', '--color', 'never', '-'],
+  },
+};
+
 if (!config.authToken) {
   config.authToken = crypto.randomBytes(24).toString('hex');
   fs.writeFileSync(CONFIG_PATH, JSON.stringify(config, null, 2));
@@ -306,17 +321,50 @@ async function restart({ rebuild = true } = {}) {
   // Step 9: If restart failed, offer to escalate to doctor session
   if (!ready) {
     steps.push('');
-    steps.push('ESCALATION: Simple restart failed. Use the Doctor button to spawn a Claude Code session for deep diagnosis.');
+    steps.push('ESCALATION: Simple restart failed. Use a Doctor button to spawn an AI coding session for deep diagnosis.');
   }
 
   return { success: ready, steps };
 }
 
 let doctorSession = null;
+let lastDoctorResult = null;
 
-function runDoctor() {
+function resolveDoctorCommand(provider, runtimeConfig = config, environment = process.env) {
+  const configuredPath = runtimeConfig.paths?.[`${provider.id}Cli`];
+  if (configuredPath) return configuredPath;
+
+  if (process.platform === 'win32' && environment.APPDATA) {
+    const npmShim = path.join(environment.APPDATA, 'npm', `${provider.command}.cmd`);
+    if (fs.existsSync(npmShim)) return npmShim;
+  }
+
+  return provider.command;
+}
+
+function buildDoctorLaunch(providerId, fullPrompt, runtimeConfig = config, environment = process.env) {
+  const provider = DOCTOR_PROVIDERS[providerId];
+  if (!provider) {
+    throw new Error(`Unsupported doctor provider '${providerId}'. Use claude or codex.`);
+  }
+
+  return {
+    provider,
+    command: resolveDoctorCommand(provider, runtimeConfig, environment),
+    args: [...provider.args],
+    cwd: runtimeConfig.paths?.redleafRoot || 'T:\\Projects\\redleaf',
+    stdin: fullPrompt,
+  };
+}
+
+function runDoctor(providerId = config.doctorProvider || 'claude') {
   if (doctorSession) {
-    return { status: 'already_running', message: 'A doctor session is already in progress.' };
+    return {
+      status: 'already_running',
+      provider: doctorSession.provider.id,
+      providerLabel: doctorSession.provider.label,
+      message: `A ${doctorSession.provider.label} doctor session is already in progress.`,
+    };
   }
 
   // Resolve against __dirname, not cwd -- the doctor is spawned detached and can
@@ -329,50 +377,82 @@ function runDoctor() {
   const prompt = fs.readFileSync(promptPath, 'utf8');
   const fullPrompt = prompt + '\n\nDiagnose and fix the Leaf suite now. Run the diagnostic procedure, fix any issues found, and verify all services are running. Report everything you do.';
 
-  const claudePath = process.env.APPDATA
-    ? path.join(process.env.APPDATA, 'npm', 'claude.cmd')
-    : 'claude';
+  let launch;
+  try {
+    launch = buildDoctorLaunch(providerId, fullPrompt);
+  } catch (error) {
+    return { status: 'error', message: error.message };
+  }
 
   const output = [];
-  let resolved = false;
+  let settled = false;
   let resolvePromise;
   const donePromise = new Promise(r => { resolvePromise = r; });
 
-  const args = ['--print', '--dangerously-skip-permissions', '-p', fullPrompt];
-  const child = spawn(claudePath, args, {
-    cwd: 'T:\\Projects\\redleaf',
-    stdio: ['ignore', 'pipe', 'pipe'],
+  const child = spawn(launch.command, launch.args, {
+    cwd: launch.cwd,
+    stdio: ['pipe', 'pipe', 'pipe'],
     env: { ...process.env },
     shell: true,
     timeout: 300000,
   });
 
-  doctorSession = { child, output, startedAt: new Date().toISOString(), done: donePromise };
+  doctorSession = {
+    child,
+    output,
+    provider: launch.provider,
+    startedAt: new Date().toISOString(),
+    done: donePromise,
+  };
+  lastDoctorResult = null;
 
   child.stdout.on('data', d => {
     const text = d.toString();
     output.push(text);
-    console.log(`[doctor] ${text.trim()}`);
+    console.log(`[doctor:${launch.provider.id}] ${text.trim()}`);
   });
   child.stderr.on('data', d => {
     const text = d.toString();
     output.push(text);
-    console.log(`[doctor:err] ${text.trim()}`);
+    console.log(`[doctor:${launch.provider.id}:err] ${text.trim()}`);
   });
+
+  const completeSession = (code) => {
+    if (settled) return;
+    settled = true;
+    lastDoctorResult = {
+      provider: launch.provider.id,
+      providerLabel: launch.provider.label,
+      startedAt: doctorSession?.startedAt,
+      completedAt: new Date().toISOString(),
+      exitCode: code,
+      outputSoFar: output.join(''),
+    };
+    doctorSession = null;
+    resolvePromise({ code, output: lastDoctorResult.outputSoFar });
+  };
+
   child.on('exit', (code) => {
     output.push(`\n--- Doctor session exited with code ${code} ---`);
-    console.log(`Doctor session exited with code ${code}`);
-    doctorSession = null;
-    resolvePromise({ code, output: output.join('') });
+    console.log(`${launch.provider.label} doctor session exited with code ${code}`);
+    completeSession(code);
   });
   child.on('error', (err) => {
     output.push(`\n--- Doctor session error: ${err.message} ---`);
     console.error('Doctor session error:', err);
-    doctorSession = null;
-    resolvePromise({ code: -1, output: output.join('') });
+    completeSession(-1);
   });
+  child.stdin.on('error', (err) => {
+    output.push(`\n--- Doctor prompt input error: ${err.message} ---`);
+  });
+  child.stdin.end(launch.stdin);
 
-  return { status: 'started', message: 'Claude Code doctor session started. Poll /doctor/status for progress.' };
+  return {
+    status: 'started',
+    provider: launch.provider.id,
+    providerLabel: launch.provider.label,
+    message: `${launch.provider.label} doctor session started. Poll /doctor/status for progress.`,
+  };
 }
 
 const server = http.createServer(async (req, res) => {
@@ -430,7 +510,7 @@ const server = http.createServer(async (req, res) => {
       const result = await restart({ rebuild: opts.rebuild !== false });
       if (!result.success) {
         result.doctorAvailable = true;
-        result.doctorHint = 'Restart failed. Hit the Doctor button to spawn a Claude Code session for deep diagnosis.';
+        result.doctorHint = 'Restart failed. Choose Claude Code or Codex Doctor for deep diagnosis.';
       }
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify(result));
@@ -438,7 +518,8 @@ const server = http.createServer(async (req, res) => {
     }
 
     if (req.method === 'POST' && url.pathname === '/doctor') {
-      const result = runDoctor();
+      const providerId = url.searchParams.get('provider') || config.doctorProvider || 'claude';
+      const result = runDoctor(providerId);
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify(result));
       return;
@@ -447,13 +528,15 @@ const server = http.createServer(async (req, res) => {
     if (req.method === 'GET' && url.pathname === '/doctor/status') {
       if (!doctorSession) {
         res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ running: false }));
+        res.end(JSON.stringify({ running: false, ...lastDoctorResult }));
         return;
       }
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({
         running: true,
         startedAt: doctorSession.startedAt,
+        provider: doctorSession.provider.id,
+        providerLabel: doctorSession.provider.label,
         outputSoFar: doctorSession.output.join(''),
       }));
       return;
@@ -517,13 +600,21 @@ function shutdown() {
   server.close(() => process.exit(0));
 }
 
-process.on('SIGINT', shutdown);
-process.on('SIGTERM', shutdown);
+if (require.main === module) {
+  process.on('SIGINT', shutdown);
+  process.on('SIGTERM', shutdown);
 
-server.listen(config.port, '0.0.0.0', () => {
-  console.log(`Leaf Doctor running on port ${config.port}`);
-  if (config.authToken) {
-    console.log(`Dashboard: http://127.0.0.1:${config.port}/?token=${config.authToken}`);
-  }
-  startTunnel();
-});
+  server.listen(config.port, '0.0.0.0', () => {
+    console.log(`Leaf Doctor running on port ${config.port}`);
+    if (config.authToken) {
+      console.log(`Dashboard: http://127.0.0.1:${config.port}/?token=${config.authToken}`);
+    }
+    startTunnel();
+  });
+}
+
+module.exports = {
+  DOCTOR_PROVIDERS,
+  buildDoctorLaunch,
+  resolveDoctorCommand,
+};
