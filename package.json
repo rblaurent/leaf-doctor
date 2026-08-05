@@ -1,10 +1,11 @@
 {
   "name": "leaf-doctor",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Emergency recovery service for the Leaf suite",
   "main": "leaf-doctor.js",
   "scripts": {
     "start": "node leaf-doctor.js",
-    "test": "node --test"
+    "test": "node --test",
+    "build:plugin": "powershell -NoProfile -ExecutionPolicy Bypass -File ./build-leafpkg.ps1"
   }
 }

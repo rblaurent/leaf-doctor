@@ -1,0 +1,26 @@
+{
+  "id": "doctor",
+  "name": "Doctor",
+  "version": "1.1.0",
+  "kernelApi": "^0.1.0",
+  "description": "Independent emergency recovery companion for the RedLeaf suite.",
+  "icon": "ph-first-aid-kit",
+  "color": "rose",
+  "requires": ["entities"],
+  "backend": {
+    "assembly": "Leaf.Plugins.Doctor",
+    "apiNamespace": "extensions"
+  },
+  "frontend": {
+    "package": "@redbamboo/plugin-doctor",
+    "settings": {}
+  },
+  "permissions": [
+    { "kind": "fs", "target": "local-app-data/RedLeaf/Doctor", "reason": "Materialize the versioned recovery runtime and retain recovery logs." },
+    { "kind": "net", "target": "127.0.0.1:18899", "reason": "Configure and health-check the detached Doctor companion." },
+    { "kind": "process", "target": "node", "reason": "Launch the detached Doctor runtime when no bundled runtime is available." },
+    { "kind": "process", "target": "cloudflared", "reason": "Expose the recovery dashboard through the configured Cloudflare Tunnel." },
+    { "kind": "process", "target": "claude", "reason": "Run unrestricted Claude Code recovery sessions when explicitly requested." },
+    { "kind": "process", "target": "codex", "reason": "Run unrestricted Codex recovery sessions when explicitly requested." }
+  ]
+}

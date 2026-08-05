@@ -535,14 +535,12 @@
 </div>
 
 <script>
-const TOKEN = '{{AUTH_TOKEN}}';
 const BASE = window.location.origin;
 
 function api(path, method = 'GET') {
   const url = new URL(path, BASE);
-  url.searchParams.set('token', TOKEN);
   const expectsText = method === 'POST' && url.pathname === '/diagnose';
-  return fetch(url, { method }).then(async response => {
+  return fetch(url, { method, credentials: 'same-origin' }).then(async response => {
     if (!response.ok) {
       let detail = response.statusText;
       try { detail = (await response.json()).error || detail; } catch {}

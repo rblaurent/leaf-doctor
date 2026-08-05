@@ -1,0 +1,56 @@
+@import "tailwindcss";
+
+.doctor-settings__status {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.doctor-settings__metric {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface-subtle);
+  padding: 0.625rem 0.75rem;
+}
+
+.doctor-settings__metric span {
+  display: block;
+  color: var(--text-muted);
+  font-size: 0.6875rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.doctor-settings__metric strong {
+  font-size: 0.8125rem;
+}
+
+.doctor-settings__controls {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.doctor-settings__select {
+  min-width: 11rem;
+  height: 1.75rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text);
+  padding: 0 0.5rem;
+  font-size: 0.75rem;
+}
+
+.doctor-settings__token {
+  overflow-wrap: anywhere;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface-subtle);
+  padding: 0.75rem;
+  margin: 0.5rem 0 1rem;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+}

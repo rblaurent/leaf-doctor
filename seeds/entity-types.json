@@ -1,0 +1,13 @@
+[
+  {
+    "typeSlug": "entity-type",
+    "slug": "doctor-config",
+    "name": "Doctor Config",
+    "data": {
+      "icon": "ph-bold ph-first-aid-kit",
+      "color": "rose",
+      "versioning": true,
+      "description": "Authored singleton configuration for the detached Doctor recovery companion"
+    }
+  }
+]

@@ -1,0 +1,20 @@
+[
+  { "parentType": "doctor-config", "slug": "enabled", "name": "Enabled", "fieldType": "boolean", "sortOrder": 0, "defaultValue": "true", "description": "Launch Doctor independently when RedLeaf starts." },
+  { "parentType": "doctor-config", "slug": "port", "name": "Port", "fieldType": "number", "sortOrder": 1, "defaultValue": "18899", "description": "Loopback port used by Doctor." },
+  { "parentType": "doctor-config", "slug": "config_revision", "name": "Configuration Revision", "fieldType": "number", "sortOrder": 2, "defaultValue": "1", "description": "Monotonic revision projected into the running companion." },
+  { "parentType": "doctor-config", "slug": "access_token", "name": "Access Token", "fieldType": "secret", "sortOrder": 3, "description": "Encrypted recovery dashboard authentication token." },
+  { "parentType": "doctor-config", "slug": "control_key", "name": "Control Key", "fieldType": "secret", "sortOrder": 4, "description": "Installation-private key for loopback lifecycle control." },
+  { "parentType": "doctor-config", "slug": "tunnel_enabled", "name": "Tunnel Enabled", "fieldType": "boolean", "sortOrder": 5, "defaultValue": "false", "description": "Expose Doctor through Cloudflare Tunnel." },
+  { "parentType": "doctor-config", "slug": "tunnel_token", "name": "Tunnel Token", "fieldType": "secret", "sortOrder": 6, "description": "Encrypted Cloudflare remotely managed tunnel token." },
+  { "parentType": "doctor-config", "slug": "tunnel_config_file", "name": "Tunnel Config File", "fieldType": "string", "sortOrder": 7, "description": "Optional local Cloudflare Tunnel configuration file." },
+  { "parentType": "doctor-config", "slug": "cloudflared_path", "name": "Cloudflared Path", "fieldType": "string", "sortOrder": 8, "description": "Optional cloudflared executable override." },
+  { "parentType": "doctor-config", "slug": "doctor_provider", "name": "Doctor Provider", "fieldType": "string", "sortOrder": 9, "defaultValue": "claude", "description": "Default deep-repair coding agent." },
+  { "parentType": "doctor-config", "slug": "dangerous_permissions", "name": "Unrestricted Repair", "fieldType": "boolean", "sortOrder": 10, "defaultValue": "true", "description": "Allow repair agents to bypass approval and sandbox prompts." },
+  { "parentType": "doctor-config", "slug": "node_path", "name": "Node Path", "fieldType": "string", "sortOrder": 11, "description": "Optional Node.js executable override." },
+  { "parentType": "doctor-config", "slug": "claude_cli", "name": "Claude CLI", "fieldType": "string", "sortOrder": 12, "description": "Optional Claude Code executable override." },
+  { "parentType": "doctor-config", "slug": "codex_cli", "name": "Codex CLI", "fieldType": "string", "sortOrder": 13, "description": "Optional Codex executable override." },
+  { "parentType": "doctor-config", "slug": "workspace_root", "name": "Workspace Root", "fieldType": "string", "sortOrder": 14, "description": "Developer checkout used by repair agents." },
+  { "parentType": "doctor-config", "slug": "rebuild_script", "name": "Rebuild Script", "fieldType": "string", "sortOrder": 15, "description": "Developer-only suite rebuild script." },
+  { "parentType": "doctor-config", "slug": "redleaf_exe", "name": "RedLeaf Executable", "fieldType": "string", "sortOrder": 16, "description": "Optional RedLeaf executable override." },
+  { "parentType": "doctor-config", "slug": "redcompute_exe", "name": "RedCompute Executable", "fieldType": "string", "sortOrder": 17, "description": "Optional RedCompute executable override." }
+]
