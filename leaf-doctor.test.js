@@ -49,10 +49,18 @@ test('rejects unknown doctor providers', () => {
 
 test('dashboard exposes both doctor providers and has valid client JavaScript', () => {
   const html = fs.readFileSync(path.join(__dirname, 'dashboard.html'), 'utf8');
-  const script = html.match(/<script>([\s\S]*?)<\/script>/)?.[1];
+  const scripts = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)].map(match => match[1]);
 
-  assert.ok(script, 'dashboard inline script is present');
+  assert.equal(scripts.length, 2, 'dashboard startup and application scripts are present');
   assert.match(html, /data-provider="claude"/);
   assert.match(html, /data-provider="codex"/);
-  assert.doesNotThrow(() => new vm.Script(script));
+  assert.match(html, /data-design-system="@redbamboo\/ui"/);
+  assert.match(html, /data-slot="app-shell"/);
+  assert.match(html, /data-slot="app-header"/);
+  assert.match(html, /data-slot="card"/);
+  assert.match(html, /data-slot="button"/);
+  assert.match(html, /data-slot="badge"/);
+  for (const script of scripts) {
+    assert.doesNotThrow(() => new vm.Script(script));
+  }
 });

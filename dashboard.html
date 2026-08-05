@@ -1,280 +1,537 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-contrast="low" data-design-system="@redbamboo/ui">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#F2F3F5" id="theme-color">
 <title>Leaf Doctor</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-<link href="https://unpkg.com/@phosphor-icons/web@2.1.1/src/fill/style.css" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link href="https://unpkg.com/@phosphor-icons/web@2.1.1/src/bold/style.css" rel="stylesheet">
 <style>
+  /*
+   * Static @redbamboo/ui adapter.
+   * Leaf Doctor must survive a dead RedLeaf process, so it cannot load the React
+   * runtime or a kernel-served bundle. These are the shared semantic tokens and
+   * primitive anatomies from @redbamboo/ui, expressed as dependency-free CSS.
+   */
   :root {
-    --bg: #262830;
-    --surface: #2E3038;
-    --elevated: #363842;
-    --border: #43454F;
-    --text: #D0D1D6;
-    --muted: #9B9CA2;
-    --disabled: #6B6F77;
-
+    color-scheme: light;
     --brand: #4A9D5B;
-    --accent-teal: #26A69A;
-    --accent-red: #E55B5B;
+    --background: #F2F3F5;
+    --foreground: #4D5259;
+    --card: #F7F8F9;
+    --card-foreground: #4D5259;
+    --popover: #F7F8F9;
+    --popover-foreground: #4D5259;
+    --primary: var(--brand);
+    --primary-foreground: #FFFFFF;
+    --secondary: #EBEBED;
+    --secondary-foreground: #4D5259;
+    --muted: #EBEBED;
+    --muted-foreground: #8B919A;
+    --accent: #EBEBED;
+    --accent-foreground: #4D5259;
+    --destructive: #E55B5B;
+    --border: #E8E9EC;
+    --input: #E8E9EC;
+    --ring: var(--brand);
+    --sidebar: #EBEBED;
+    --sidebar-foreground: #4D5259;
+    --contrast: #2D3239;
+    --strong: #3D4248;
+    --code-bg: #EBEBED;
+    --scrollbar-thumb: #D8DAE0;
+    --scrollbar-thumb-hover: #C8CAD0;
+    --status-live: #26A69A;
     --accent-gold: #D4AA4F;
-    --accent-nova: #C74B7A;
-    --accent-purple: #7C4DFF;
-
-    --radius-sm: 0.45rem;
-    --radius-md: 0.6rem;
-    --radius-lg: 0.75rem;
-    --radius-xl: 1.05rem;
-    --radius-2xl: 1.35rem;
+    --accent-red: #E55B5B;
+    --domain-technology: #5B8BC4;
+    --domain-presence: #C74B7A;
+    --radius: 0.75rem;
+    --font-sans: "Inter", system-ui, "Noto Emoji", sans-serif;
+    --font-mono: "JetBrains Mono", ui-monospace, "Noto Emoji", monospace;
   }
 
-  * { margin: 0; padding: 0; box-sizing: border-box; }
+  :root.dark {
+    color-scheme: dark;
+    --background: #262830;
+    --foreground: #D0D1D6;
+    --card: #2E3038;
+    --card-foreground: #D0D1D6;
+    --popover: #2E3038;
+    --popover-foreground: #D0D1D6;
+    --secondary: #3C3E48;
+    --secondary-foreground: #D0D1D6;
+    --muted: #2E3038;
+    --muted-foreground: #9B9CA2;
+    --accent: #3C3E48;
+    --accent-foreground: #D0D1D6;
+    --border: #43454F;
+    --input: #3C3E48;
+    --sidebar: #262830;
+    --sidebar-foreground: #D0D1D6;
+    --contrast: #FFFFFF;
+    --strong: #FFFFFF;
+    --code-bg: #1E2028;
+    --scrollbar-thumb: #43454F;
+    --scrollbar-thumb-hover: #555760;
+  }
+
+  * {
+    box-sizing: border-box;
+    scrollbar-width: thin;
+    scrollbar-color: var(--scrollbar-thumb) transparent;
+  }
+
+  *::-webkit-scrollbar { width: 6px; height: 6px; }
+  *::-webkit-scrollbar-track { background: transparent; }
+  *::-webkit-scrollbar-thumb { background: var(--scrollbar-thumb); border-radius: 3px; }
+  *::-webkit-scrollbar-thumb:hover { background: var(--scrollbar-thumb-hover); }
+
+  html, body { min-height: 100%; }
 
   body {
-    font-family: 'Inter', system-ui, -apple-system, sans-serif;
-    background: var(--bg);
-    color: var(--text);
+    margin: 0;
+    background: var(--background);
+    color: var(--foreground);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    transition: background-color 160ms ease, color 160ms ease;
+  }
+
+  button { font: inherit; }
+
+  [data-slot="app-shell"] {
     min-height: 100vh;
     min-height: 100dvh;
-    padding: 24px;
-    padding: max(24px, env(safe-area-inset-top)) max(24px, env(safe-area-inset-right)) max(24px, env(safe-area-inset-bottom)) max(24px, env(safe-area-inset-left));
-    -webkit-font-smoothing: antialiased;
   }
 
-  .container {
-    max-width: 420px;
-    margin: 0 auto;
-  }
-
-  .header {
-    display: flex;
-    align-items: center;
-    gap: 14px;
-    padding: 12px 0 20px;
-  }
-  .header-icon {
-    width: 44px;
-    height: 44px;
-    border-radius: var(--radius-lg);
-    background: rgba(74, 157, 91, 0.12);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    flex-shrink: 0;
-    font-size: 20px;
-    color: var(--brand);
-  }
-  .header h1 {
-    font-size: 18px;
-    font-weight: 600;
-    letter-spacing: -0.02em;
-    line-height: 1.2;
-  }
-  .header .sub {
-    color: var(--muted);
-    font-size: 12px;
-    font-weight: 400;
-    margin-top: 2px;
-  }
-
-  .status-banner {
-    padding: 11px 16px;
-    margin: 0 0 20px;
-    border-radius: var(--radius-xl);
-    font-size: 13px;
-    font-weight: 500;
-    display: flex;
-    align-items: center;
-    gap: 10px;
-  }
-  .status-banner .dot {
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    flex-shrink: 0;
-  }
-  .status-banner.healthy { background: rgba(74,157,91,0.10); color: var(--brand); }
-  .status-banner.healthy .dot { background: var(--brand); box-shadow: 0 0 8px rgba(74,157,91,0.4); }
-  .status-banner.degraded { background: rgba(212,170,79,0.10); color: var(--accent-gold); }
-  .status-banner.degraded .dot { background: var(--accent-gold); box-shadow: 0 0 8px rgba(212,170,79,0.4); }
-  .status-banner.down { background: rgba(229,91,91,0.10); color: var(--accent-red); }
-  .status-banner.down .dot { background: var(--accent-red); box-shadow: 0 0 8px rgba(229,91,91,0.4); }
-
-  .card {
-    background: var(--surface);
-    border-radius: var(--radius-xl);
-    box-shadow: 0 0 0 1px rgba(255,255,255,0.05);
-    overflow: hidden;
-  }
-  .card-header {
-    padding: 14px 18px 6px;
-    font-size: 11px;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.06em;
-    color: var(--muted);
-  }
-
-  .svc-list { margin-bottom: 20px; }
-  .svc {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 11px 18px;
-    border-bottom: 1px solid rgba(255,255,255,0.04);
-  }
-  .svc:last-child { border-bottom: none; }
-  .svc-left {
+  [data-slot="app-header"] {
+    position: sticky;
+    z-index: 20;
+    top: 0;
     display: flex;
     align-items: center;
     gap: 12px;
-    min-width: 0;
+    min-height: 49px;
+    padding: max(8px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) 8px max(16px, env(safe-area-inset-left));
+    border-bottom: 1px solid rgb(from var(--border) r g b / 0.60);
+    background: rgb(from var(--background) r g b / 0.92);
+    backdrop-filter: blur(14px);
   }
-  .svc-icon {
+
+  .app-header-brand {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+    user-select: none;
+  }
+
+  .app-header-brand__icon {
+    position: relative;
+    display: grid;
+    place-items: center;
+    width: 24px;
+    height: 24px;
+    flex: 0 0 auto;
+    border-radius: 4px;
+    color: var(--primary);
+    background: rgb(from var(--primary) r g b / 0.20);
+    font-size: 12px;
+  }
+
+  .app-header-brand__text {
+    overflow: hidden;
+    color: var(--primary);
+    font-size: 14px;
+    font-weight: 600;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+
+  .app-header-brand__muted { color: var(--muted-foreground); }
+  .app-header-spacer { flex: 1 1 auto; }
+
+  .header-state {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    color: var(--muted-foreground);
+    font-size: 11px;
+  }
+
+  .header-state__dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 999px;
+    background: var(--status-live);
+  }
+
+  main {
+    width: min(100%, 720px);
+    margin: 0 auto;
+    padding: 34px max(16px, env(safe-area-inset-right)) max(40px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
+  }
+
+  .page-intro { margin: 0 0 24px; }
+
+  .eyebrow {
+    margin: 0 0 7px;
+    color: var(--primary);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+
+  h1 {
+    margin: 0;
+    color: var(--strong);
+    font-size: clamp(28px, 7vw, 36px);
+    font-weight: 700;
+    line-height: 1.1;
+    letter-spacing: -0.025em;
+  }
+
+  .page-description {
+    max-width: 570px;
+    margin: 9px 0 0;
+    color: var(--muted-foreground);
+    font-size: 14px;
+    line-height: 1.55;
+  }
+
+  [data-slot="card"] {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    overflow: hidden;
+    margin-bottom: 16px;
+    padding: 16px 0;
+    border-radius: var(--radius);
+    color: var(--card-foreground);
+    background: var(--card);
+    box-shadow: 0 0 0 1px rgb(from var(--foreground) r g b / 0.10);
+  }
+
+  [data-slot="card-header"] {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: start;
+    gap: 12px;
+    padding: 0 16px;
+  }
+
+  [data-slot="card-title"] {
+    color: var(--strong);
+    font-size: 16px;
+    font-weight: 600;
+    line-height: 1.35;
+  }
+
+  [data-slot="card-description"] {
+    margin-top: 2px;
+    color: var(--muted-foreground);
+    font-size: 12px;
+    line-height: 1.45;
+  }
+
+  [data-slot="card-content"] { padding: 0 16px; }
+
+  [data-slot="badge"] {
+    display: inline-flex;
+    width: fit-content;
+    height: 20px;
+    flex: 0 0 auto;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+    padding: 2px 8px;
+    overflow: hidden;
+    border: 1px solid transparent;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 500;
+    line-height: 1;
+    white-space: nowrap;
+  }
+
+  .badge--healthy {
+    color: var(--status-live);
+    background: rgb(from var(--status-live) r g b / 0.12);
+  }
+
+  .badge--degraded {
+    color: var(--accent-gold);
+    background: rgb(from var(--accent-gold) r g b / 0.14);
+  }
+
+  .badge--down {
+    color: var(--destructive);
+    background: rgb(from var(--destructive) r g b / 0.12);
+  }
+
+  .badge__dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 999px;
+    background: currentColor;
+  }
+
+  .service-list {
+    margin: 0;
+    border-top: 1px solid rgb(from var(--foreground) r g b / 0.06);
+  }
+
+  [data-slot="item-list-row"] {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-height: 57px;
+    padding: 10px 16px;
+    border-bottom: 1px solid rgb(from var(--foreground) r g b / 0.06);
+  }
+
+  [data-slot="item-list-row"]:last-child { border-bottom: 0; }
+
+  [data-slot="item-list-icon"] {
+    display: grid;
     width: 32px;
     height: 32px;
-    border-radius: var(--radius-md);
-    display: flex;
-    align-items: center;
-    justify-content: center;
+    flex: 0 0 auto;
+    place-items: center;
+    border-radius: 8px;
+    color: var(--service-color);
+    background: rgb(from var(--service-color) r g b / 0.14);
     font-size: 15px;
-    flex-shrink: 0;
   }
-  .svc-icon.pg { background: rgba(38,166,154,0.12); color: var(--accent-teal); }
-  .svc-icon.rl { background: rgba(74,157,91,0.12); color: var(--brand); }
-  .svc-icon.rc { background: rgba(229,91,91,0.12); color: var(--accent-red); }
-  .svc-icon.nv { background: rgba(199,75,122,0.12); color: var(--accent-nova); }
-  .svc-icon.cf { background: rgba(212,170,79,0.12); color: var(--accent-gold); }
-  .svc-name {
+
+  .service-copy { min-width: 0; flex: 1 1 auto; }
+
+  [data-slot="item-list-title"] {
+    display: block;
+    overflow: hidden;
+    color: var(--strong);
     font-size: 13px;
     font-weight: 500;
+    white-space: nowrap;
+    text-overflow: ellipsis;
   }
-  .svc-detail {
-    font-size: 11px;
-    color: var(--disabled);
-    margin-top: 1px;
-  }
-  .badge {
-    font-size: 10px;
-    font-weight: 600;
-    padding: 3px 8px;
-    border-radius: 9999px;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-    flex-shrink: 0;
-  }
-  .badge.up { background: rgba(74,157,91,0.12); color: var(--brand); }
-  .badge.down { background: rgba(229,91,91,0.12); color: var(--accent-red); }
 
-  .actions {
+  [data-slot="item-list-subtitle"] {
+    display: block;
+    margin-top: 2px;
+    overflow: hidden;
+    color: var(--muted-foreground);
+    font-size: 11px;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+
+  .actions-grid {
     display: grid;
     grid-template-columns: 1fr 1fr;
-    gap: 10px;
-    margin: 0 0 20px;
-  }
-  button {
-    padding: 13px 16px;
-    border: none;
-    border-radius: var(--radius-xl);
-    font-family: 'Inter', system-ui, sans-serif;
-    font-size: 13px;
-    font-weight: 600;
-    cursor: pointer;
-    transition: all 0.15s ease;
-    color: white;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 7px;
-  }
-  button:active { transform: scale(0.97); }
-  button:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
-  button i { font-size: 15px; }
-  .btn-diagnose {
-    background: var(--elevated);
-    color: var(--text);
-    box-shadow: 0 0 0 1px rgba(255,255,255,0.08);
-  }
-  .btn-restart {
-    background: var(--accent-red);
-  }
-  .btn-doctor {
-    background: rgba(124,77,255,0.12);
-    color: var(--accent-purple);
-    box-shadow: 0 0 0 1px rgba(124,77,255,0.18);
+    gap: 8px;
   }
 
-  .output {
-    margin: 0 0 20px;
-    padding: 16px;
-    background: var(--bg);
-    border-radius: var(--radius-lg);
-    box-shadow: inset 0 0 0 1px rgba(255,255,255,0.04);
-    font-family: 'JetBrains Mono', monospace;
+  .actions-divider {
+    height: 1px;
+    margin: 14px 0;
+    background: rgb(from var(--foreground) r g b / 0.06);
+  }
+
+  .action-label {
+    margin: 0 0 8px;
+    color: var(--muted-foreground);
     font-size: 11px;
-    line-height: 1.7;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+  }
+
+  [data-slot="button"] {
+    display: inline-flex;
+    height: 36px;
+    min-width: 0;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 0 10px;
+    border: 1px solid transparent;
+    border-radius: 8px;
+    outline: none;
+    color: var(--primary-foreground);
+    background: var(--primary);
+    font-size: 13px;
+    font-weight: 500;
+    line-height: 1;
+    white-space: nowrap;
+    cursor: pointer;
+    user-select: none;
+    transition: background-color 120ms ease, color 120ms ease, border-color 120ms ease, opacity 120ms ease, transform 80ms ease;
+  }
+
+  [data-slot="button"]:hover { background: rgb(from var(--primary) r g b / 0.80); }
+  [data-slot="button"]:active { transform: translateY(1px); }
+  [data-slot="button"]:focus-visible { border-color: var(--ring); box-shadow: 0 0 0 3px rgb(from var(--ring) r g b / 0.25); }
+  [data-slot="button"]:disabled { opacity: 0.5; pointer-events: none; transform: none; }
+
+  [data-slot="button"][data-variant="secondary"] {
+    color: var(--secondary-foreground);
+    background: var(--secondary);
+  }
+
+  [data-slot="button"][data-variant="secondary"]:hover { background: rgb(from var(--secondary) r g b / 0.80); }
+
+  [data-slot="button"][data-variant="outline"] {
+    color: var(--foreground);
+    border-color: var(--border);
+    background: var(--background);
+  }
+
+  [data-slot="button"][data-variant="outline"]:hover { color: var(--foreground); background: var(--muted); }
+
+  [data-slot="button"][data-variant="destructive"] {
+    color: var(--destructive);
+    background: rgb(from var(--destructive) r g b / 0.10);
+  }
+
+  [data-slot="button"][data-variant="destructive"]:hover { background: rgb(from var(--destructive) r g b / 0.20); }
+
+  .icon-button {
+    width: 32px;
+    height: 32px;
+    padding: 0;
+    color: var(--muted-foreground);
+    background: transparent;
+  }
+
+  .icon-button:hover { color: var(--foreground); background: rgb(from var(--contrast) r g b / 0.08); }
+
+  .output-card { display: none; }
+  .output-card.is-visible { display: flex; }
+
+  .output {
+    max-height: 48vh;
+    margin: 0;
+    overflow: auto;
+    color: var(--foreground);
+    font-family: var(--font-mono);
+    font-size: 11px;
+    line-height: 1.65;
     white-space: pre-wrap;
-    word-break: break-word;
-    max-height: 45vh;
-    overflow-y: auto;
-    display: none;
-    color: var(--muted);
+    overflow-wrap: anywhere;
   }
 
   .spinner {
-    display: inline-block;
     width: 13px;
     height: 13px;
-    border: 2px solid rgba(255,255,255,0.15);
+    flex: 0 0 auto;
+    border: 2px solid rgb(from currentColor r g b / 0.22);
     border-top-color: currentColor;
-    border-radius: 50%;
-    animation: spin 0.6s linear infinite;
+    border-radius: 999px;
+    animation: spin 0.65s linear infinite;
   }
+
   @keyframes spin { to { transform: rotate(360deg); } }
 
-  .timestamp {
-    text-align: center;
-    color: var(--disabled);
-    font-size: 11px;
-    padding-bottom: 12px;
+  @media (max-width: 420px) {
+    main { padding-top: 28px; }
+    .header-state { display: none; }
+    .page-description { font-size: 13px; }
+  }
+
+  @media (pointer: coarse) {
+    [data-slot="button"]:not(.icon-button) { min-height: 42px; }
+    .icon-button { width: 36px; height: 36px; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { scroll-behavior: auto !important; transition-duration: 0.01ms !important; animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; }
   }
 </style>
+<script>
+  (() => {
+    const saved = localStorage.getItem('leaf-doctor-theme') || 'system';
+    const dark = saved === 'dark' || (saved === 'system' && matchMedia('(prefers-color-scheme: dark)').matches);
+    document.documentElement.classList.toggle('dark', dark);
+    document.querySelector('meta[name="theme-color"]').content = dark ? '#262830' : '#F2F3F5';
+  })();
+</script>
 </head>
 <body>
-<div class="container">
-  <div class="header">
-    <div class="header-icon">
-      <i class="ph-fill ph-first-aid"></i>
+<div data-slot="app-shell">
+  <header data-slot="app-header">
+    <div class="app-header-brand" aria-label="Leaf Doctor">
+      <span class="app-header-brand__icon"><i class="ph-bold ph-first-aid"></i></span>
+      <span class="app-header-brand__text"><span class="app-header-brand__muted">Leaf</span>Doctor</span>
     </div>
-    <div>
-      <h1>Leaf Doctor</h1>
-      <div class="sub">Emergency Recovery</div>
-    </div>
-  </div>
+    <span class="app-header-spacer"></span>
+    <span class="header-state"><span class="header-state__dot"></span>Standalone recovery</span>
+    <button data-slot="button" class="icon-button" id="theme-toggle" type="button" aria-label="Switch to dark theme" title="Switch theme">
+      <i class="ph-bold ph-moon"></i>
+    </button>
+  </header>
 
-  <div id="overall" class="status-banner down">
-    <span class="dot"></span>
-    <span>Checking...</span>
-  </div>
+  <main>
+    <section class="page-intro" aria-labelledby="page-title">
+      <p class="eyebrow">Emergency recovery</p>
+      <h1 id="page-title">System status</h1>
+      <p class="page-description">Health checks and recovery controls for the RedBamboo suite. Leaf Doctor remains available when the kernel does not.</p>
+    </section>
 
-  <div class="card svc-list">
-    <div class="card-header">Services</div>
-    <div id="services"></div>
-  </div>
+    <section data-slot="card" aria-labelledby="status-title">
+      <div data-slot="card-header">
+        <div>
+          <div data-slot="card-title" id="status-title">Leaf suite</div>
+          <div data-slot="card-description" id="timestamp">Checking services...</div>
+        </div>
+        <span data-slot="badge" class="badge--degraded" id="overall"><span class="badge__dot"></span>Checking</span>
+      </div>
+      <div data-slot="item-list" class="service-list" id="services"></div>
+    </section>
 
-  <div class="actions">
-    <button class="btn-diagnose" onclick="runDiagnose()"><i class="ph-fill ph-magnifying-glass"></i> Diagnose</button>
-    <button class="btn-restart" onclick="confirmRestart()"><i class="ph-fill ph-arrow-clockwise"></i> Restart</button>
-    <button class="btn-doctor" data-provider="claude" onclick="runDoctorSession('claude')"><i class="ph-fill ph-brain"></i> Claude Code Doctor</button>
-    <button class="btn-doctor" data-provider="codex" onclick="runDoctorSession('codex')"><i class="ph-fill ph-terminal-window"></i> Codex Doctor</button>
-  </div>
+    <section data-slot="card" aria-labelledby="recovery-title">
+      <div data-slot="card-header">
+        <div>
+          <div data-slot="card-title" id="recovery-title">Recovery</div>
+          <div data-slot="card-description">Inspect first. Restart or launch an AI repair session only when needed.</div>
+        </div>
+      </div>
+      <div data-slot="card-content">
+        <div class="actions-grid">
+          <button data-slot="button" data-variant="default" class="btn-diagnose" type="button" onclick="runDiagnose()">
+            <i class="ph-bold ph-magnifying-glass"></i><span>Diagnose</span>
+          </button>
+          <button data-slot="button" data-variant="destructive" class="btn-restart" type="button" onclick="confirmRestart()">
+            <i class="ph-bold ph-arrow-clockwise"></i><span>Restart suite</span>
+          </button>
+        </div>
+        <div class="actions-divider"></div>
+        <p class="action-label">AI-assisted recovery</p>
+        <div class="actions-grid">
+          <button data-slot="button" data-variant="secondary" class="btn-doctor" data-provider="claude" type="button" onclick="runDoctorSession('claude')">
+            <i class="ph-bold ph-brain"></i><span>Claude Code</span>
+          </button>
+          <button data-slot="button" data-variant="secondary" class="btn-doctor" data-provider="codex" type="button" onclick="runDoctorSession('codex')">
+            <i class="ph-bold ph-terminal-window"></i><span>Codex</span>
+          </button>
+        </div>
+      </div>
+    </section>
 
-  <div id="output" class="output"></div>
-  <div id="timestamp" class="timestamp"></div>
+    <section data-slot="card" class="output-card" id="output-card" aria-labelledby="output-title" aria-live="polite">
+      <div data-slot="card-header">
+        <div data-slot="card-title" id="output-title">Recovery output</div>
+      </div>
+      <div data-slot="card-content">
+        <pre class="output" id="output"></pre>
+      </div>
+    </section>
+  </main>
 </div>
 
 <script>
@@ -284,145 +541,148 @@ const BASE = window.location.origin;
 function api(path, method = 'GET') {
   const url = new URL(path, BASE);
   url.searchParams.set('token', TOKEN);
-  return fetch(url, { method })
-    .then(r => method === 'POST' && path === '/diagnose' ? r.text() : r.json());
+  const expectsText = method === 'POST' && url.pathname === '/diagnose';
+  return fetch(url, { method }).then(async response => {
+    if (!response.ok) {
+      let detail = response.statusText;
+      try { detail = (await response.json()).error || detail; } catch {}
+      throw new Error(detail || `Request failed (${response.status})`);
+    }
+    return expectsText ? response.text() : response.json();
+  });
 }
 
 const SVC_META = {
-  postgres:   { label: 'PostgreSQL',  cls: 'pg', icon: 'ph-fill ph-database' },
-  redleaf:    { label: 'Leaf Kernel', cls: 'rl', icon: 'ph-fill ph-leaf' },
-  redcompute: { label: 'Compute',     cls: 'rc', icon: 'ph-fill ph-cpu' },
-  codered:    { label: 'CodeRed',     cls: 'rc', icon: 'ph-fill ph-code' },
-  nova:       { label: 'Nova',        cls: 'nv', icon: 'ph-fill ph-star-four' },
-  apis:       { label: 'APIs',        cls: 'rl', icon: 'ph-fill ph-plugs-connected' },
-  tunnel:     { label: 'CF Tunnel',   cls: 'cf', icon: 'ph-fill ph-cloud-arrow-up' },
+  postgres:   { label: 'PostgreSQL',  color: 'var(--status-live)', icon: 'ph-bold ph-database' },
+  redleaf:    { label: 'Leaf Kernel', color: 'var(--primary)', icon: 'ph-bold ph-leaf' },
+  redcompute: { label: 'Compute',     color: 'var(--domain-technology)', icon: 'ph-bold ph-cpu' },
+  codered:    { label: 'CodeRed',     color: 'var(--accent-red)', icon: 'ph-bold ph-code' },
+  nova:       { label: 'Nova',        color: 'var(--domain-presence)', icon: 'ph-bold ph-star-four' },
+  apis:       { label: 'APIs',        color: 'var(--primary)', icon: 'ph-bold ph-plugs-connected' },
+  tunnel:     { label: 'CF Tunnel',   color: 'var(--accent-gold)', icon: 'ph-bold ph-cloud-arrow-up' },
 };
 
 function detailFor(key, svc) {
-  if (key === 'postgres') return svc.up ? `Port ${svc.port}` : 'Not responding';
-  if (key === 'redleaf') return svc.up ? `Port ${svc.port}` : 'Not responding';
-  if (key === 'redcompute') return svc.up ? `Port ${svc.port}` : 'Not responding';
-  if (key === 'codered') return svc.up ? 'Plugin loaded' : 'Not responding';
-  if (key === 'nova') return svc.up ? 'Plugin loaded' : 'Not responding';
+  if (key === 'postgres' || key === 'redleaf' || key === 'redcompute') return svc.up ? `Port ${svc.port}` : 'Not responding';
+  if (key === 'codered' || key === 'nova') return svc.up ? 'Plugin loaded' : 'Not responding';
   if (key === 'apis') {
-    if (!svc.checks || !svc.checks.length) return svc.up ? 'All OK' : 'No checks';
-    const ok = svc.checks.filter(c => c.up).length;
-    return svc.up ? `${ok}/${svc.checks.length} passing` : `${ok}/${svc.checks.length} passing`;
+    if (!svc.checks || !svc.checks.length) return svc.up ? 'All checks passed' : 'No checks configured';
+    return `${svc.checks.filter(check => check.up).length}/${svc.checks.length} passing`;
   }
   if (key === 'tunnel') return svc.up ? 'Connected' : 'Disconnected';
   return '';
 }
 
 function renderServices(data) {
-  const el = document.getElementById('services');
+  const services = data.services;
+  document.getElementById('services').innerHTML = Object.entries(SVC_META).map(([key, meta]) => {
+    const service = services[key];
+    return `
+      <div data-slot="item-list-row">
+        <span data-slot="item-list-icon" style="--service-color: ${meta.color}"><i class="${meta.icon}"></i></span>
+        <span class="service-copy">
+          <span data-slot="item-list-title">${meta.label}</span>
+          <span data-slot="item-list-subtitle">${detailFor(key, service)}</span>
+        </span>
+        <span data-slot="badge" class="${service.up ? 'badge--healthy' : 'badge--down'}">
+          <span class="badge__dot"></span>${service.up ? 'Up' : 'Down'}
+        </span>
+      </div>`;
+  }).join('');
+
+  const upCount = Object.values(services).filter(service => service.up).length;
+  const total = Object.keys(services).length;
   const overall = document.getElementById('overall');
-  const svc = data.services;
-
-  el.innerHTML = Object.entries(SVC_META).map(([key, meta]) => `
-    <div class="svc">
-      <div class="svc-left">
-        <div class="svc-icon ${meta.cls}"><i class="${meta.icon}"></i></div>
-        <div>
-          <div class="svc-name">${meta.label}</div>
-          <div class="svc-detail">${detailFor(key, svc[key])}</div>
-        </div>
-      </div>
-      <span class="badge ${svc[key].up ? 'up' : 'down'}">${svc[key].up ? 'UP' : 'DOWN'}</span>
-    </div>
-  `).join('');
-
-  const upCount = Object.values(svc).filter(s => s.up).length;
-  const total = Object.keys(svc).length;
   if (upCount === total) {
-    overall.className = 'status-banner healthy';
-    overall.innerHTML = '<span class="dot"></span><span>All Systems Operational</span>';
+    overall.className = 'badge--healthy';
+    overall.innerHTML = '<span class="badge__dot"></span>Healthy';
   } else if (upCount > 0) {
-    overall.className = 'status-banner degraded';
-    overall.innerHTML = `<span class="dot"></span><span>Degraded — ${upCount}/${total} services</span>`;
+    overall.className = 'badge--degraded';
+    overall.innerHTML = `<span class="badge__dot"></span>${upCount}/${total} up`;
   } else {
-    overall.className = 'status-banner down';
-    overall.innerHTML = '<span class="dot"></span><span>All Services Down</span>';
+    overall.className = 'badge--down';
+    overall.innerHTML = '<span class="badge__dot"></span>Offline';
   }
 
-  document.getElementById('timestamp').textContent = `Last check: ${new Date(data.timestamp).toLocaleTimeString()}`;
+  document.getElementById('timestamp').textContent = `Checked ${new Date(data.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
 }
 
 async function refresh() {
   try {
-    const data = await api('/status');
-    renderServices(data);
-  } catch (e) {
-    const o = document.getElementById('overall');
-    o.className = 'status-banner down';
-    o.innerHTML = '<span class="dot"></span><span>Doctor service unreachable</span>';
+    renderServices(await api('/status'));
+  } catch {
+    const overall = document.getElementById('overall');
+    overall.className = 'badge--down';
+    overall.innerHTML = '<span class="badge__dot"></span>Unavailable';
+    document.getElementById('timestamp').textContent = 'Doctor service unreachable';
   }
 }
 
 function showOutput(text) {
-  const el = document.getElementById('output');
-  el.style.display = 'block';
-  el.textContent = text;
-  el.scrollTop = el.scrollHeight;
+  const card = document.getElementById('output-card');
+  const output = document.getElementById('output');
+  card.classList.add('is-visible');
+  output.textContent = text;
+  output.scrollTop = output.scrollHeight;
+}
+
+function setButton(button, { disabled, icon, label, loading = false }) {
+  button.disabled = disabled;
+  button.innerHTML = loading
+    ? `<span class="spinner"></span><span>${label}</span>`
+    : `<i class="ph-bold ${icon}"></i><span>${label}</span>`;
 }
 
 async function runDiagnose() {
-  const btn = document.querySelector('.btn-diagnose');
-  btn.disabled = true;
-  btn.innerHTML = '<span class="spinner"></span> Running';
+  const button = document.querySelector('.btn-diagnose');
+  setButton(button, { disabled: true, label: 'Running...', loading: true });
   try {
-    const report = await api('/diagnose', 'POST');
-    showOutput(report);
-  } catch (e) {
-    showOutput('Error: ' + e.message);
+    showOutput(await api('/diagnose', 'POST'));
+  } catch (error) {
+    showOutput('Error: ' + error.message);
   }
-  btn.disabled = false;
-  btn.innerHTML = '<i class="ph-fill ph-magnifying-glass"></i> Diagnose';
+  setButton(button, { disabled: false, icon: 'ph-magnifying-glass', label: 'Diagnose' });
 }
 
 async function confirmRestart() {
-  if (!confirm('Restart the entire Leaf suite? This will kill RedLeaf and all plugins, then relaunch.')) return;
-  const btn = document.querySelector('.btn-restart');
-  btn.disabled = true;
-  btn.innerHTML = '<span class="spinner"></span> Restarting';
+  if (!confirm('Restart the entire Leaf suite? This stops RedLeaf and every plugin before relaunching them.')) return;
+  const button = document.querySelector('.btn-restart');
+  setButton(button, { disabled: true, label: 'Restarting...', loading: true });
   try {
     const result = await api('/restart', 'POST');
-    let msg = result.steps.join('\n');
-    if (result.success) {
-      msg += '\n\nRESTART SUCCESSFUL';
-    } else {
-      msg += '\n\nRESTART FAILED';
-      if (result.doctorHint) {
-        msg += '\n' + result.doctorHint;
-      }
-    }
-    showOutput(msg);
+    let message = result.steps.join('\n');
+    message += result.success ? '\n\nRESTART SUCCESSFUL' : '\n\nRESTART FAILED';
+    if (result.doctorHint) message += '\n' + result.doctorHint;
+    showOutput(message);
     setTimeout(refresh, 3000);
-  } catch (e) {
-    showOutput('Error: ' + e.message);
+  } catch (error) {
+    showOutput('Error: ' + error.message);
   }
-  btn.disabled = false;
-  btn.innerHTML = '<i class="ph-fill ph-arrow-clockwise"></i> Restart';
+  setButton(button, { disabled: false, icon: 'ph-arrow-clockwise', label: 'Restart suite' });
 }
 
-function setDoctorButtons({ disabled, activeProvider = null, working = false } = {}) {
-  document.querySelectorAll('.btn-doctor').forEach(btn => {
-    const provider = btn.dataset.provider;
-    const label = provider === 'codex' ? 'Codex Doctor' : 'Claude Code Doctor';
+function setDoctorButtons({ disabled, activeProvider = null, phase = null } = {}) {
+  document.querySelectorAll('.btn-doctor').forEach(button => {
+    const provider = button.dataset.provider;
     const icon = provider === 'codex' ? 'ph-terminal-window' : 'ph-brain';
-    btn.disabled = disabled;
-    btn.innerHTML = working && provider === activeProvider
-      ? '<span class="spinner"></span> Doctor working...'
-      : `<i class="ph-fill ${icon}"></i> ${label}`;
+    const label = provider === 'codex' ? 'Codex' : 'Claude Code';
+    const active = provider === activeProvider;
+    setButton(button, {
+      disabled,
+      icon,
+      label: active && phase ? phase : label,
+      loading: active && !!phase,
+    });
   });
 }
 
 async function runDoctorSession(provider) {
-  setDoctorButtons({ disabled: true, activeProvider: provider, working: true });
+  setDoctorButtons({ disabled: true, activeProvider: provider, phase: 'Starting...' });
   try {
     const result = await api(`/doctor?provider=${encodeURIComponent(provider)}`, 'POST');
     if (result.status === 'already_running') {
-      showOutput(`${result.providerLabel || 'Doctor'} session already in progress. Polling for output...`);
       provider = result.provider || provider;
+      showOutput(`${result.providerLabel || 'Doctor'} session already in progress. Polling for output...`);
     } else if (result.status === 'error') {
       showOutput('Error: ' + result.message);
       setDoctorButtons({ disabled: false });
@@ -431,8 +691,8 @@ async function runDoctorSession(provider) {
       showOutput(`${result.providerLabel} doctor session started. Polling for output...`);
     }
     pollDoctor(provider);
-  } catch (e) {
-    showOutput('Error: ' + e.message);
+  } catch (error) {
+    showOutput('Error: ' + error.message);
     setDoctorButtons({ disabled: false });
   }
 }
@@ -441,9 +701,9 @@ async function pollDoctor(provider) {
   try {
     const status = await api('/doctor/status');
     if (status.running) {
-      showOutput(status.outputSoFar || 'Doctor is working...');
       provider = status.provider || provider;
-      setDoctorButtons({ disabled: true, activeProvider: provider, working: true });
+      showOutput(status.outputSoFar || 'Doctor is working...');
+      setDoctorButtons({ disabled: true, activeProvider: provider, phase: 'Working...' });
       setTimeout(() => pollDoctor(provider), 3000);
     } else {
       setDoctorButtons({ disabled: false });
@@ -455,6 +715,33 @@ async function pollDoctor(provider) {
   }
 }
 
+const themeMedia = matchMedia('(prefers-color-scheme: dark)');
+
+function currentThemePreference() {
+  return localStorage.getItem('leaf-doctor-theme') || 'system';
+}
+
+function applyTheme(preference = currentThemePreference()) {
+  const dark = preference === 'dark' || (preference === 'system' && themeMedia.matches);
+  document.documentElement.classList.toggle('dark', dark);
+  document.getElementById('theme-color').content = dark ? '#262830' : '#F2F3F5';
+  const toggle = document.getElementById('theme-toggle');
+  toggle.setAttribute('aria-label', dark ? 'Switch to light theme' : 'Switch to dark theme');
+  toggle.innerHTML = `<i class="ph-bold ${dark ? 'ph-sun' : 'ph-moon'}"></i>`;
+}
+
+document.getElementById('theme-toggle').addEventListener('click', () => {
+  const dark = document.documentElement.classList.contains('dark');
+  const next = dark ? 'light' : 'dark';
+  localStorage.setItem('leaf-doctor-theme', next);
+  applyTheme(next);
+});
+
+themeMedia.addEventListener?.('change', () => {
+  if (currentThemePreference() === 'system') applyTheme('system');
+});
+
+applyTheme();
 refresh();
 setInterval(refresh, 10000);
 </script>
