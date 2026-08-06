@@ -234,12 +234,13 @@ public sealed class DoctorRuntimeService(
             var from = Path.Combine(source, file);
             if (!File.Exists(from))
                 throw new FileNotFoundException($"Doctor package is missing runtime file '{file}'", from);
-            File.Copy(from, Path.Combine(versionDirectory, file), overwrite: true);
+            RuntimeMaterializer.CopyVersionFile(from, Path.Combine(versionDirectory, file));
         }
 
         var bundledNode = Path.Combine(source, "node.exe");
         if (File.Exists(bundledNode))
-            File.Copy(bundledNode, Path.Combine(versionDirectory, "node.exe"), overwrite: true);
+            RuntimeMaterializer.CopyVersionFile(
+                bundledNode, Path.Combine(versionDirectory, "node.exe"));
 
         return versionDirectory;
     }
@@ -538,4 +539,37 @@ public sealed class DoctorRuntimeService(
 
     private static string SafeSegment(string value)
         => string.Concat(value.Select(c => char.IsLetterOrDigit(c) || c is '.' or '-' or '_' ? c : '_'));
+}
+
+internal static class RuntimeMaterializer
+{
+    /// <summary>
+    /// A package version is immutable. Once a runtime file exists in its version directory,
+    /// leave it alone. In particular, Windows cannot overwrite the node.exe that Doctor is
+    /// currently executing during a settings reconcile or an explicit restart.
+    /// </summary>
+    internal static void CopyVersionFile(string source, string destination)
+    {
+        if (File.Exists(destination)) return;
+
+        Directory.CreateDirectory(Path.GetDirectoryName(destination)
+            ?? throw new ArgumentException("Destination must include a directory", nameof(destination)));
+        var temporary = $"{destination}.{Guid.NewGuid():N}.tmp";
+        try
+        {
+            File.Copy(source, temporary, overwrite: false);
+            try
+            {
+                File.Move(temporary, destination, overwrite: false);
+            }
+            catch (IOException) when (File.Exists(destination))
+            {
+                // Another reconcile completed the same immutable materialization first.
+            }
+        }
+        finally
+        {
+            if (File.Exists(temporary)) File.Delete(temporary);
+        }
+    }
 }

@@ -19,5 +19,6 @@
 
   <ItemGroup>
     <EmbeddedResource Include="..\..\plugin.json" LogicalName="plugin.json" />
+    <InternalsVisibleTo Include="Leaf.Plugins.Doctor.Tests" />
   </ItemGroup>
 </Project>
