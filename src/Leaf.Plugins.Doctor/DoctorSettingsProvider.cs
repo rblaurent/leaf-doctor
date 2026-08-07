@@ -134,7 +134,11 @@ public sealed class DoctorSettingsProvider(DoctorRuntimeService runtime)
         foreach (var (key, value) in values)
         {
             if (!allowed.Contains(key)) throw new ArgumentException($"Unknown setting '{key}'");
-            if (value == null) continue;
+            if (value == null)
+            {
+                if (key == "tunnel_token") patch[key] = null;
+                continue;
+            }
             if (key is "access_token" or "tunnel_token"
                 && value is JsonValue secretValue
                 && secretValue.TryGetValue<string>(out var secret)
@@ -225,6 +229,8 @@ public sealed class DoctorSettingsProvider(DoctorRuntimeService runtime)
             ["key"] = key,
             ["type"] = "secret",
             ["configured"] = configured,
+            ["protection"] = "encrypted",
+            ["verification"] = "unverified",
             ["description"] = description,
         };
 

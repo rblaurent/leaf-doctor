@@ -1,5 +1,14 @@
 import { useCallback, useEffect, useState } from "react"
-import { Button, Input, SectionHeader, SettingRow, Switch } from "@redbamboo/ui"
+import {
+  Button,
+  Input,
+  ProtectedValueField,
+  SectionHeader,
+  SettingRow,
+  Switch,
+  type ProtectedValueProtection,
+  type ProtectedValueVerification,
+} from "@redbamboo/ui"
 
 const BASE = "/api/extensions/doctor"
 
@@ -20,6 +29,8 @@ type Field = {
   type: "boolean" | "number" | "string" | "secret" | "select" | "action"
   value?: unknown
   configured?: boolean
+  protection?: ProtectedValueProtection
+  verification?: ProtectedValueVerification
   description?: string
   options?: string[]
 }
@@ -68,6 +79,7 @@ export function DoctorSettingsPanel() {
       await reload()
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Could not save Doctor settings")
+      throw cause
     }
   }
 
@@ -138,10 +150,14 @@ export function DoctorSettingsPanel() {
     {descriptor?.sections.map((section) => <section key={section.id}>
       <SectionHeader>{section.label}</SectionHeader>
       {section.fields.map((field) => field.type === "action"
-        ? field.key === "rotate_access_token" && <SettingRow key={field.key} label="Access token" hint={field.description}>
-            <Button variant="outline" size="sm" disabled={busy} onClick={() => void rotate()}>Rotate and reveal once</Button>
-          </SettingRow>
-        : <FieldControl key={field.key} section={section.id} field={field} onSave={save} />)}
+        ? null
+        : <FieldControl
+            key={field.key}
+            section={section.id}
+            field={field}
+            onSave={save}
+            onRotate={field.key === "access_token" ? rotate : undefined}
+          />)}
     </section>)}
   </div>
 }
@@ -154,10 +170,12 @@ function FieldControl({
   section,
   field,
   onSave,
+  onRotate,
 }: {
   section: string
   field: Field
   onSave: (section: string, key: string, value: unknown) => Promise<void>
+  onRotate?: () => Promise<void>
 }) {
   const [draft, setDraft] = useState("")
   useEffect(() => {
@@ -168,6 +186,27 @@ function FieldControl({
   if (field.type === "boolean") {
     return <SettingRow label={label} hint={field.description}>
       <Switch checked={field.value === true} onCheckedChange={(value) => void onSave(section, field.key, value)} />
+    </SettingRow>
+  }
+
+  if (field.type === "secret") {
+    return <SettingRow label={label} hint={field.description}>
+      <ProtectedValueField
+        className="w-full"
+        kind="token"
+        status={{
+          configured: field.configured === true,
+          protection: field.protection ?? "unknown",
+          verification: field.verification ?? "unverified",
+        }}
+        placeholder={`Enter ${label.toLowerCase()}`}
+        onReplace={(value) => onSave(section, field.key, value)}
+        onRotate={onRotate}
+        onClear={field.key === "tunnel_token"
+          ? () => onSave(section, field.key, null)
+          : undefined}
+        allowClear={field.key === "tunnel_token"}
+      />
     </SettingRow>
   }
 
@@ -182,13 +221,11 @@ function FieldControl({
     </SettingRow>
   }
 
-  const placeholder = field.type === "secret"
-    ? field.configured ? "Stored encrypted" : "Not configured"
-    : field.value == null ? "Auto-detected" : String(field.value)
+  const placeholder = field.value == null ? "Auto-detected" : String(field.value)
   return <SettingRow label={label} hint={field.description}>
     <div className="doctor-settings__controls">
       <Input
-        type={field.type === "secret" ? "password" : field.type === "number" ? "number" : "text"}
+        type={field.type === "number" ? "number" : "text"}
         className="w-56 h-7 text-xs"
         placeholder={placeholder}
         value={draft}
