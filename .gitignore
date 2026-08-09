@@ -5,3 +5,5 @@ web/dist/
 web/node_modules/
 **/bin/
 **/obj/
+.release-output/
+artifacts/

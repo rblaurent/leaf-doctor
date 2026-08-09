@@ -1,0 +1,133 @@
+{
+  "schemaVersion": 1,
+  "inputType": "leaf-doctor-extension-release-producer-input",
+  "classification": "protected",
+  "redleafReleaseToolCommit": "4bf0894014b392e60cf0b5c6ca85920428ba7516",
+  "toolchain": {
+    "node": "22.23.1",
+    "pnpm": "11.0.9",
+    "dotnetSdk": "9.0.303",
+    "msbuild": "17.14.13.31314"
+  },
+  "leafSdk": {
+    "repository": "RedBamboo-Interactive/redleaf",
+    "commit": "4bf0894014b392e60cf0b5c6ca85920428ba7516",
+    "sourcePath": "src/Leaf.Sdk"
+  },
+  "redbamboo": {
+    "repository": "RedBamboo-Interactive/redbamboo-packages",
+    "commit": "ea68aa5e3718a54837ba024855f7434497b9c61a",
+    "lockPath": "pnpm-lock.yaml",
+    "inputs": [
+      {
+        "id": "redbamboo-ui",
+        "name": "@redbamboo/ui",
+        "sourcePath": "packages/ui"
+      },
+      {
+        "id": "redbamboo-utility",
+        "name": "@redbamboo/utility",
+        "sourcePath": "packages/utility"
+      }
+    ]
+  },
+  "build": {
+    "backendProject": "src/Leaf.Plugins.Doctor/Leaf.Plugins.Doctor.csproj",
+    "testProject": "tests/Leaf.Plugins.Doctor.Tests/Leaf.Plugins.Doctor.Tests.csproj",
+    "frontendDirectory": "web"
+  },
+  "runtime": {
+    "lockPath": "release/doctor-runtime-lock.v1.json",
+    "payload": [
+      { "source": "dashboard.html", "target": "dashboard.html" },
+      { "source": "doctor-prompt.md", "target": "doctor-prompt.md" },
+      { "source": "leaf-doctor.js", "target": "leaf-doctor.js" },
+      { "source": "package.json", "target": "package.json" }
+    ]
+  },
+  "locks": [
+    {
+      "id": "backend-nuget-lock",
+      "ecosystem": "nuget",
+      "path": "src/Leaf.Plugins.Doctor/packages.lock.json"
+    },
+    {
+      "id": "redbamboo-pnpm-lock",
+      "ecosystem": "npm",
+      "path": "redbamboo-packages/pnpm-lock.yaml"
+    },
+    {
+      "id": "tests-nuget-lock",
+      "ecosystem": "nuget",
+      "path": "tests/Leaf.Plugins.Doctor.Tests/packages.lock.json"
+    },
+    {
+      "id": "web-pnpm-lock",
+      "ecosystem": "npm",
+      "path": "web/pnpm-lock.yaml"
+    }
+  ],
+  "targetPlatform": {
+    "operatingSystem": "windows",
+    "architecture": "x64"
+  },
+  "dependencies": [],
+  "runtimeRequirements": [
+    {
+      "id": "claude-code",
+      "management": "systemPrerequisite",
+      "requirement": "conditional",
+      "versionConstraint": "unresolved",
+      "interface": "Claude Code CLI --print with optional --dangerously-skip-permissions",
+      "sourceMarkers": [
+        "leaf-doctor.js#--dangerously-skip-permissions",
+        "plugin.json#\"target\": \"claude\""
+      ]
+    },
+    {
+      "id": "cloudflared",
+      "management": "systemPrerequisite",
+      "requirement": "conditional",
+      "versionConstraint": "unresolved",
+      "interface": "cloudflared CLI tunnel run using a configured token or config file",
+      "sourceMarkers": [
+        "leaf-doctor.js#['tunnel', 'run', '--token'",
+        "plugin.json#\"target\": \"cloudflared\""
+      ]
+    },
+    {
+      "id": "codex",
+      "management": "systemPrerequisite",
+      "requirement": "conditional",
+      "versionConstraint": "unresolved",
+      "interface": "Codex CLI exec with optional --dangerously-bypass-approvals-and-sandbox",
+      "sourceMarkers": [
+        "leaf-doctor.js#--dangerously-bypass-approvals-and-sandbox",
+        "plugin.json#\"target\": \"codex\""
+      ]
+    },
+    {
+      "id": "doctor-runtime",
+      "management": "managedByExtension",
+      "requirement": "required",
+      "versionConstraint": "1.1.0",
+      "interface": "detached loopback HTTP GET /health returning service, version, configRevision; authenticated reconcile and shutdown control",
+      "sourceMarkers": [
+        "leaf-doctor.js#if (url.pathname === '/health')",
+        "src/Leaf.Plugins.Doctor/DoctorRuntimeService.cs#MaterializeRuntime",
+        "src/Leaf.Plugins.Doctor/DoctorRuntimeService.cs#ReadHealthAsync"
+      ]
+    },
+    {
+      "id": "node",
+      "management": "managedByExtension",
+      "requirement": "required",
+      "versionConstraint": "22.23.1",
+      "interface": "bundled Windows x64 node.exe executes leaf-doctor.js --config-stdin",
+      "sourceMarkers": [
+        "release/doctor-runtime-lock.v1.json#node-v22.23.1-win-x64.zip",
+        "src/Leaf.Plugins.Doctor/DoctorRuntimeService.cs#node.exe"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,352 @@
+name: Build and bridge Doctor unsigned candidate
+
+on:
+  workflow_call:
+    inputs:
+      central_release_tag:
+        description: Safe immutable RedLeaf release tag for the exact Doctor .leafpkg bytes.
+        required: true
+        type: string
+    secrets:
+      CROSS_REPO_TOKEN:
+        description: Optional token that can read pinned RedLeaf and RedBamboo commits.
+        required: false
+  workflow_dispatch:
+    inputs:
+      central_release_tag:
+        description: Safe immutable RedLeaf release tag for the exact Doctor .leafpkg bytes.
+        required: true
+        type: string
+
+permissions: {}
+
+jobs:
+  candidate:
+    name: Build one protected channel-neutral Doctor input
+    runs-on: windows-2025
+    timeout-minutes: 50
+    permissions:
+      contents: read
+    outputs:
+      handoff_artifact: ${{ steps.handoff.outputs.handoff_artifact }}
+
+    steps:
+      - name: Checkout exact Doctor source
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          repository: rblaurent/leaf-doctor
+          ref: ${{ github.workflow_sha }}
+          path: leaf-doctor
+          persist-credentials: false
+
+      - name: Require immutable producer pins
+        id: pins
+        working-directory: leaf-doctor
+        shell: pwsh
+        run: |
+          $input = Get-Content -LiteralPath 'release/producer-input.v1.json' -Raw | ConvertFrom-Json
+          $runtime = Get-Content -LiteralPath $input.runtime.lockPath -Raw | ConvertFrom-Json
+          $tag = '${{ inputs.central_release_tag }}'
+          if ($tag -notmatch '^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$') { throw 'central_release_tag must be one safe GitHub release-tag segment.' }
+          foreach ($pin in @($input.redleafReleaseToolCommit, $input.leafSdk.commit, $input.redbamboo.commit)) {
+            if ([string]$pin -notmatch '^[a-f0-9]{40}$') { throw 'Every producer source and tool pin must be one full lowercase commit SHA.' }
+          }
+          if ([string]$runtime.node.archive.sha256 -notmatch '^[a-f0-9]{64}$' -or [string]$runtime.node.executable.sha256 -notmatch '^[a-f0-9]{64}$') { throw 'The bundled runtime lock is invalid.' }
+          "redleaf=$($input.redleafReleaseToolCommit)" | Out-File $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          "leaf_sdk=$($input.leafSdk.commit)" | Out-File $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          "redbamboo=$($input.redbamboo.commit)" | Out-File $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          "version=$((Get-Content plugin.json -Raw | ConvertFrom-Json).version)" | Out-File $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          "node_url=$($runtime.node.archive.url)" | Out-File $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          "node_archive_sha=$($runtime.node.archive.sha256)" | Out-File $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          "node_path=$($runtime.node.executable.path)" | Out-File $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          "node_sha=$($runtime.node.executable.sha256)" | Out-File $env:GITHUB_OUTPUT -Encoding utf8 -Append
+
+      - name: Checkout exact RedBamboo source inputs
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          repository: RedBamboo-Interactive/redbamboo-packages
+          ref: ${{ steps.pins.outputs.redbamboo }}
+          path: redbamboo-packages
+          token: ${{ secrets.CROSS_REPO_TOKEN || github.token }}
+          persist-credentials: false
+
+      - name: Checkout exact Leaf.Sdk source
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          repository: RedBamboo-Interactive/redleaf
+          ref: ${{ steps.pins.outputs.leaf_sdk }}
+          path: leaf-sdk
+          token: ${{ secrets.CROSS_REPO_TOKEN || github.token }}
+          persist-credentials: false
+
+      - name: Checkout exact RedLeaf release tool
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          repository: RedBamboo-Interactive/redleaf
+          ref: ${{ steps.pins.outputs.redleaf }}
+          path: redleaf-release
+          token: ${{ secrets.CROSS_REPO_TOKEN || github.token }}
+          persist-credentials: false
+
+      - name: Set up exact Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22.23.1
+
+      - name: Set up exact .NET SDK
+        uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
+        with:
+          dotnet-version: 9.0.303
+
+      - name: Activate exact pnpm and verify checkouts
+        shell: pwsh
+        run: |
+          corepack enable
+          corepack prepare pnpm@11.0.9 --activate
+          if ((corepack pnpm --version).Trim() -cne '11.0.9') { throw 'Unexpected pnpm version.' }
+          if ((git -C leaf-doctor rev-parse HEAD).Trim() -cne '${{ github.workflow_sha }}') { throw 'Doctor checkout does not match github.workflow_sha.' }
+          if ((git -C redbamboo-packages rev-parse HEAD).Trim() -cne '${{ steps.pins.outputs.redbamboo }}') { throw 'RedBamboo checkout mismatch.' }
+          if ((git -C leaf-sdk rev-parse HEAD).Trim() -cne '${{ steps.pins.outputs.leaf_sdk }}') { throw 'Leaf.Sdk checkout mismatch.' }
+          if ((git -C redleaf-release rev-parse HEAD).Trim() -cne '${{ steps.pins.outputs.redleaf }}') { throw 'RedLeaf release-tool checkout mismatch.' }
+
+      - name: Acquire locked bundled Doctor runtime
+        shell: pwsh
+        run: |
+          $archive = Join-Path $env:RUNNER_TEMP 'doctor-node.zip'
+          $expanded = Join-Path $env:RUNNER_TEMP 'doctor-node'
+          Invoke-WebRequest -UseBasicParsing -Uri '${{ steps.pins.outputs.node_url }}' -OutFile $archive
+          if ((Get-FileHash $archive -Algorithm SHA256).Hash.ToLowerInvariant() -cne '${{ steps.pins.outputs.node_archive_sha }}') { throw 'Node archive hash mismatch.' }
+          Expand-Archive -LiteralPath $archive -DestinationPath $expanded
+          $node = Join-Path $expanded '${{ steps.pins.outputs.node_path }}'
+          if ((Get-FileHash $node -Algorithm SHA256).Hash.ToLowerInvariant() -cne '${{ steps.pins.outputs.node_sha }}') { throw 'node.exe hash mismatch.' }
+          "DOCTOR_NODE=$node" | Out-File $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Build pinned RedLeaf release tool from its lock
+        working-directory: redleaf-release
+        shell: pwsh
+        run: |
+          dotnet restore tools/RedLeaf.ReleaseTool/RedLeaf.ReleaseTool.csproj --locked-mode --nologo
+          dotnet build tools/RedLeaf.ReleaseTool/RedLeaf.ReleaseTool.csproj --configuration Release --no-restore --nologo -p:ContinuousIntegrationBuild=true -p:Deterministic=true
+
+      - name: Restore exact RedBamboo graph and build genuine inputs
+        working-directory: redbamboo-packages
+        shell: pwsh
+        run: |
+          corepack pnpm install --frozen-lockfile
+          corepack pnpm --filter @redbamboo/ui --filter @redbamboo/utility build
+
+      - name: Run locked backend and integration tests
+        working-directory: leaf-doctor
+        shell: pwsh
+        run: |
+          $sdk = (Resolve-Path '../leaf-sdk/src/Leaf.Sdk/Leaf.Sdk.csproj').Path
+          dotnet restore src/Leaf.Plugins.Doctor/Leaf.Plugins.Doctor.csproj --locked-mode --nologo -p:LeafSdkProject=$sdk
+          dotnet restore tests/Leaf.Plugins.Doctor.Tests/Leaf.Plugins.Doctor.Tests.csproj --locked-mode --nologo -p:LeafSdkProject=$sdk
+          dotnet test tests/Leaf.Plugins.Doctor.Tests/Leaf.Plugins.Doctor.Tests.csproj --configuration Release --no-restore --nologo -p:LeafSdkProject=$sdk -p:ContinuousIntegrationBuild=true -p:Deterministic=true
+          node --test leaf-doctor.test.js
+
+      - name: Run frozen frontend checks and release contract tests
+        working-directory: leaf-doctor
+        shell: pwsh
+        run: |
+          corepack pnpm --dir web install --frozen-lockfile
+          corepack pnpm --dir web run typecheck
+          corepack pnpm --dir web run build:pkg
+          node --test tests/release-contract.test.mjs
+
+      - name: Scan locked dependency graphs
+        working-directory: leaf-doctor
+        shell: pwsh
+        run: |
+          $sdk = (Resolve-Path '../leaf-sdk/src/Leaf.Sdk/Leaf.Sdk.csproj').Path
+          $env:LeafSdkProject = $sdk
+          $nuget = dotnet list tests/Leaf.Plugins.Doctor.Tests/Leaf.Plugins.Doctor.Tests.csproj package --vulnerable --include-transitive --format json
+          Remove-Item Env:/LeafSdkProject
+          if ($LASTEXITCODE -ne 0 -or ($nuget -join "`n") -match '"vulnerabilities"\s*:') { throw 'NuGet vulnerability scan failed or reported a vulnerable package.' }
+          corepack pnpm --dir web audit --prod --audit-level high
+
+      - name: Generate exact channel-neutral metadata
+        working-directory: leaf-doctor
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path artifacts -Force | Out-Null
+          node scripts/release/metadata.mjs generate `
+            --input release/producer-input.v1.json `
+            --repository . `
+            --redbamboo ../redbamboo-packages `
+            --leaf-sdk ../leaf-sdk `
+            --redleaf ../redleaf-release `
+            --source-commit '${{ github.workflow_sha }}' `
+            --source-date-epoch "$(git show -s --format=%ct HEAD)" `
+            --output artifacts/doctor-release-metadata.v1.json
+
+      - name: Produce two isolated canonical passes
+        working-directory: leaf-doctor
+        shell: pwsh
+        env:
+          CENTRAL_RELEASE_TAG: ${{ inputs.central_release_tag }}
+        run: |
+          $common = @{
+            PluginDir = '.'
+            Metadata = 'artifacts/doctor-release-metadata.v1.json'
+            RedLeafToolDll = '../redleaf-release/tools/RedLeaf.ReleaseTool/bin/Release/net9.0/RedLeaf.ReleaseTool.dll'
+            LeafSdkProject = '../leaf-sdk/src/Leaf.Sdk/Leaf.Sdk.csproj'
+            RedBambooLock = '../redbamboo-packages/pnpm-lock.yaml'
+            NodeExecutable = $env:DOCTOR_NODE
+            CentralReleaseTag = $env:CENTRAL_RELEASE_TAG
+          }
+          ./scripts/release/produce.ps1 @common -OutputDir artifacts/pass-1
+          ./scripts/release/produce.ps1 @common -OutputDir artifacts/pass-2
+
+      - name: Validate and prove byte-for-byte reproduction
+        working-directory: leaf-doctor
+        shell: pwsh
+        run: |
+          foreach ($pass in @('pass-1', 'pass-2')) {
+            node scripts/release/metadata.mjs validate `
+              --input release/producer-input.v1.json `
+              --repository . `
+              --redbamboo ../redbamboo-packages `
+              --leaf-sdk ../leaf-sdk `
+              --redleaf ../redleaf-release `
+              --source-commit '${{ github.workflow_sha }}' `
+              --source-date-epoch "$(git show -s --format=%ct HEAD)" `
+              --metadata artifacts/doctor-release-metadata.v1.json `
+              --descriptor "artifacts/$pass/doctor-${{ steps.pins.outputs.version }}.component-input.v1.json" `
+              --artifact "artifacts/$pass/doctor-${{ steps.pins.outputs.version }}.leafpkg"
+          }
+          $files = @(
+            "doctor-${{ steps.pins.outputs.version }}.leafpkg",
+            "doctor-${{ steps.pins.outputs.version }}.component-input.v1.json",
+            'doctor-candidate.unsigned.json',
+            'doctor-signature-input.json'
+          )
+          $hashes = foreach ($file in $files) {
+            $first = (Get-FileHash -LiteralPath "artifacts/pass-1/$file" -Algorithm SHA256).Hash.ToLowerInvariant()
+            $second = (Get-FileHash -LiteralPath "artifacts/pass-2/$file" -Algorithm SHA256).Hash.ToLowerInvariant()
+            if ($first -cne $second) { throw "Reproduction mismatch: $file" }
+            "$first  $file"
+          }
+          New-Item -ItemType Directory -Path artifacts/handoff | Out-Null
+          foreach ($file in $files) { Copy-Item -LiteralPath "artifacts/pass-1/$file" -Destination artifacts/handoff }
+          $hashes | Set-Content -LiteralPath artifacts/reproducibility.sha256 -Encoding utf8NoBOM
+
+      - name: Name one unsigned channel-neutral handoff
+        id: handoff
+        shell: pwsh
+        run: |
+          "handoff_artifact=doctor-${{ steps.pins.outputs.version }}-${{ github.workflow_sha }}-unsigned-release-inputs" | Out-File $env:GITHUB_OUTPUT -Encoding utf8 -Append
+
+      - name: Upload one unsigned channel-neutral handoff
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: ${{ steps.handoff.outputs.handoff_artifact }}
+          path: |
+            leaf-doctor/artifacts/handoff/doctor-${{ steps.pins.outputs.version }}.leafpkg
+            leaf-doctor/artifacts/handoff/doctor-${{ steps.pins.outputs.version }}.component-input.v1.json
+            leaf-doctor/artifacts/handoff/doctor-candidate.unsigned.json
+            leaf-doctor/artifacts/handoff/doctor-signature-input.json
+            leaf-doctor/artifacts/reproducibility.sha256
+          if-no-files-found: error
+          retention-days: 14
+
+  bridge:
+    name: Append unsigned candidate to the fixed acquisition release
+    needs: candidate
+    runs-on: windows-2025
+    timeout-minutes: 10
+    if: ${{ github.repository == 'rblaurent/leaf-doctor' }}
+    concurrency:
+      group: leaf-doctor-unsigned-candidates
+      cancel-in-progress: false
+    permissions:
+      actions: read
+      contents: write
+    steps:
+      - name: Download the exact candidate handoff
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: ${{ needs.candidate.outputs.handoff_artifact }}
+          path: bridge-input
+
+      - name: Append or prove the immutable unsigned candidate pair
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Set-StrictMode -Version Latest
+          $repository = 'rblaurent/leaf-doctor'
+          $visibility = & gh api "repos/$repository" --jq .visibility
+          if ($LASTEXITCODE -ne 0 -or $visibility -cne 'public') {
+            throw 'Rolling candidate publication requires the producer repository to already be public.'
+          }
+          $tag = 'leaf-doctor-unsigned-candidates'
+          $candidate = Join-Path $PWD 'bridge-input/doctor-candidate.unsigned.json'
+          if (-not (Test-Path -LiteralPath $candidate -PathType Leaf)) { throw "Required handoff file is missing: $candidate" }
+          $candidateDocument = Get-Content -LiteralPath $candidate -Raw | ConvertFrom-Json
+          if ([string]$candidateDocument.status -cne 'unsigned') { throw 'Candidate status must be unsigned.' }
+          if ($null -ne $candidateDocument.artifact.signature) { throw 'Unsigned candidate must not carry an artifact signature.' }
+          $candidateId = [string]$candidateDocument.candidateId
+          if ($candidateId -notmatch '^[a-z0-9][a-z0-9._-]{0,127}$') { throw 'Candidate ID is not a standard safe asset token.' }
+          $version = [string]$candidateDocument.version
+          if ($version -notmatch '^[0-9A-Za-z][0-9A-Za-z._-]{0,127}$') { throw 'Candidate package version is invalid.' }
+          $package = Join-Path $PWD "bridge-input/doctor-$version.leafpkg"
+          if (-not (Test-Path -LiteralPath $package -PathType Leaf)) { throw "Required handoff file is missing: $package" }
+          $packageFacts = Get-Item -LiteralPath $package
+          $packageHash = (Get-FileHash -LiteralPath $package -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ([string]$candidateDocument.artifact.sha256 -notmatch '^[a-f0-9]{64}$' -or $packageHash -cne [string]$candidateDocument.artifact.sha256 -or [Int64]$packageFacts.Length -ne [Int64]$candidateDocument.artifact.sizeBytes) { throw 'Candidate artifact facts do not match the .leafpkg handoff bytes.' }
+          $candidateName = "$candidateId.candidate.json"
+          $packageName = "$candidateId.leafpkg"
+          $publish = Join-Path $PWD 'bridge-publish'
+          New-Item -ItemType Directory -Path $publish | Out-Null
+          $publishCandidate = Join-Path $publish $candidateName
+          $publishPackage = Join-Path $publish $packageName
+          Copy-Item -LiteralPath $candidate -Destination $publishCandidate
+          Copy-Item -LiteralPath $package -Destination $publishPackage
+          $localHashes = @{
+            $candidateName = (Get-FileHash -LiteralPath $publishCandidate -Algorithm SHA256).Hash.ToLowerInvariant()
+            $packageName = (Get-FileHash -LiteralPath $publishPackage -Algorithm SHA256).Hash.ToLowerInvariant()
+          }
+
+          $releaseJson = & gh release view $tag --repo $repository --json isDraft,isPrerelease,assets 2>$null
+          if ($LASTEXITCODE -ne 0) {
+            & gh release create $tag --repo $repository --target '${{ github.workflow_sha }}' --prerelease --latest=false --title 'Leaf Doctor unsigned candidates' --notes 'Append-only unsigned candidate acquisition bridge.'
+            if ($LASTEXITCODE -ne 0) { throw 'Unable to create the fixed unsigned-candidate release.' }
+            $releaseJson = & gh release view $tag --repo $repository --json isDraft,isPrerelease,assets
+            if ($LASTEXITCODE -ne 0) { throw 'Unable to read the fixed unsigned-candidate release.' }
+          }
+          $release = $releaseJson | ConvertFrom-Json
+          if ([bool]$release.isDraft -or -not [bool]$release.isPrerelease) { throw 'Fixed unsigned-candidate release must be a public prerelease.' }
+          $assetNames = @($release.assets | ForEach-Object { [string]$_.name })
+          foreach ($name in $assetNames) {
+            if ($name -notmatch '^[a-z0-9][a-z0-9._-]{0,127}\.(candidate\.json|leafpkg)$') { throw "Unexpected asset on fixed unsigned-candidate release: $name" }
+          }
+          $pairs = @{}
+          foreach ($name in $assetNames) {
+            $suffix = if ($name.EndsWith('.candidate.json', [StringComparison]::Ordinal)) { '.candidate.json' } else { '.leafpkg' }
+            $id = $name.Substring(0, $name.Length - $suffix.Length)
+            if (-not $pairs.ContainsKey($id)) { $pairs[$id] = @() }
+            $pairs[$id] += $suffix
+          }
+          foreach ($id in $pairs.Keys) {
+            if (@($pairs[$id]).Count -ne 2 -or -not ($pairs[$id] -contains '.candidate.json') -or -not ($pairs[$id] -contains '.leafpkg')) { throw "Existing unsigned candidate pair is incomplete: $id" }
+          }
+          $existingCandidate = @($assetNames | Where-Object { $_ -ceq $candidateName })
+          $existingPackage = @($assetNames | Where-Object { $_ -ceq $packageName })
+          if ($existingCandidate.Count -ne $existingPackage.Count) { throw 'Candidate collision: only one member of the immutable pair exists.' }
+          if ($existingCandidate.Count -gt 1) { throw 'Candidate collision: duplicate immutable asset names exist.' }
+
+          $download = Join-Path $PWD 'bridge-verify'
+          New-Item -ItemType Directory -Path $download | Out-Null
+          if ($existingCandidate.Count -eq 0) {
+            & gh release upload $tag --repo $repository $publishCandidate $publishPackage
+            if ($LASTEXITCODE -ne 0) { throw 'Unable to append the immutable unsigned candidate pair.' }
+          }
+          foreach ($name in @($candidateName, $packageName)) {
+            & gh release download $tag --repo $repository --pattern $name --dir $download
+            if ($LASTEXITCODE -ne 0) { throw "Unable to re-download immutable asset: $name" }
+            $actual = (Get-FileHash -LiteralPath (Join-Path $download $name) -Algorithm SHA256).Hash.ToLowerInvariant()
+            if ($actual -cne $localHashes[$name]) { throw "Candidate collision: $name exists with different bytes." }
+            "$actual  $name" | Tee-Object -FilePath $env:GITHUB_STEP_SUMMARY -Append
+          }

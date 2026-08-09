@@ -4,6 +4,10 @@
   "description": "Doctor extension settings panel",
   "type": "module",
   "private": true,
+  "packageManager": "pnpm@11.0.9",
+  "engines": {
+    "node": "22.23.1"
+  },
   "exports": {
     ".": {
       "default": "./src/index.ts"
