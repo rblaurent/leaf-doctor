@@ -3,20 +3,12 @@ name: Build and bridge Doctor unsigned candidate
 on:
   workflow_call:
     inputs:
-      central_release_tag:
-        description: Safe immutable RedLeaf release tag for the exact Doctor .leafpkg bytes.
-        required: true
-        type: string
     secrets:
       CROSS_REPO_TOKEN:
         description: Optional token that can read pinned RedLeaf and RedBamboo commits.
         required: false
   workflow_dispatch:
     inputs:
-      central_release_tag:
-        description: Safe immutable RedLeaf release tag for the exact Doctor .leafpkg bytes.
-        required: true
-        type: string
 
 permissions: {}
 
@@ -46,8 +38,6 @@ jobs:
         run: |
           $input = Get-Content -LiteralPath 'release/producer-input.v1.json' -Raw | ConvertFrom-Json
           $runtime = Get-Content -LiteralPath $input.runtime.lockPath -Raw | ConvertFrom-Json
-          $tag = '${{ inputs.central_release_tag }}'
-          if ($tag -notmatch '^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$') { throw 'central_release_tag must be one safe GitHub release-tag segment.' }
           foreach ($pin in @($input.redleafReleaseToolCommit, $input.leafSdk.commit, $input.redbamboo.commit)) {
             if ([string]$pin -notmatch '^[a-f0-9]{40}$') { throw 'Every producer source and tool pin must be one full lowercase commit SHA.' }
           }
@@ -183,8 +173,6 @@ jobs:
       - name: Produce two isolated canonical passes
         working-directory: leaf-doctor
         shell: pwsh
-        env:
-          CENTRAL_RELEASE_TAG: ${{ inputs.central_release_tag }}
         run: |
           $common = @{
             PluginDir = '.'
@@ -193,7 +181,6 @@ jobs:
             LeafSdkProject = '../leaf-sdk/src/Leaf.Sdk/Leaf.Sdk.csproj'
             RedBambooLock = '../redbamboo-packages/pnpm-lock.yaml'
             NodeExecutable = $env:DOCTOR_NODE
-            CentralReleaseTag = $env:CENTRAL_RELEASE_TAG
           }
           ./scripts/release/produce.ps1 @common -OutputDir artifacts/pass-1
           ./scripts/release/produce.ps1 @common -OutputDir artifacts/pass-2
@@ -277,10 +264,6 @@ jobs:
           $ErrorActionPreference = 'Stop'
           Set-StrictMode -Version Latest
           $repository = 'rblaurent/leaf-doctor'
-          $visibility = & gh api "repos/$repository" --jq .visibility
-          if ($LASTEXITCODE -ne 0 -or $visibility -cne 'public') {
-            throw 'Rolling candidate publication requires the producer repository to already be public.'
-          }
           $tag = 'leaf-doctor-unsigned-candidates'
           $candidate = Join-Path $PWD 'bridge-input/doctor-candidate.unsigned.json'
           if (-not (Test-Path -LiteralPath $candidate -PathType Leaf)) { throw "Required handoff file is missing: $candidate" }
@@ -297,7 +280,8 @@ jobs:
           $packageHash = (Get-FileHash -LiteralPath $package -Algorithm SHA256).Hash.ToLowerInvariant()
           if ([string]$candidateDocument.artifact.sha256 -notmatch '^[a-f0-9]{64}$' -or $packageHash -cne [string]$candidateDocument.artifact.sha256 -or [Int64]$packageFacts.Length -ne [Int64]$candidateDocument.artifact.sizeBytes) { throw 'Candidate artifact facts do not match the .leafpkg handoff bytes.' }
           $candidateName = "$candidateId.candidate.json"
-          $packageName = "$candidateId.leafpkg"
+          $packageName = [IO.Path]::GetFileName(([Uri][string]$candidateDocument.artifact.url).AbsolutePath)
+          if (-not ([string]$candidateDocument.artifact.url).StartsWith("https://github.com/rblaurent/leaf-doctor/releases/download/leaf-doctor-unsigned-candidates/", [StringComparison]::Ordinal) -or $packageName -notmatch '^doctor-[0-9A-Za-z._-]+\.leafpkg$') { throw 'Candidate artifact URL is outside the canonical Doctor producer prerelease.' }
           $publish = Join-Path $PWD 'bridge-publish'
           New-Item -ItemType Directory -Path $publish | Out-Null
           $publishCandidate = Join-Path $publish $candidateName
@@ -317,20 +301,10 @@ jobs:
             if ($LASTEXITCODE -ne 0) { throw 'Unable to read the fixed unsigned-candidate release.' }
           }
           $release = $releaseJson | ConvertFrom-Json
-          if ([bool]$release.isDraft -or -not [bool]$release.isPrerelease) { throw 'Fixed unsigned-candidate release must be a public prerelease.' }
+          if ([bool]$release.isDraft -or -not [bool]$release.isPrerelease) { throw 'Fixed unsigned-candidate release must be a prerelease.' }
           $assetNames = @($release.assets | ForEach-Object { [string]$_.name })
           foreach ($name in $assetNames) {
             if ($name -notmatch '^[a-z0-9][a-z0-9._-]{0,127}\.(candidate\.json|leafpkg)$') { throw "Unexpected asset on fixed unsigned-candidate release: $name" }
-          }
-          $pairs = @{}
-          foreach ($name in $assetNames) {
-            $suffix = if ($name.EndsWith('.candidate.json', [StringComparison]::Ordinal)) { '.candidate.json' } else { '.leafpkg' }
-            $id = $name.Substring(0, $name.Length - $suffix.Length)
-            if (-not $pairs.ContainsKey($id)) { $pairs[$id] = @() }
-            $pairs[$id] += $suffix
-          }
-          foreach ($id in $pairs.Keys) {
-            if (@($pairs[$id]).Count -ne 2 -or -not ($pairs[$id] -contains '.candidate.json') -or -not ($pairs[$id] -contains '.leafpkg')) { throw "Existing unsigned candidate pair is incomplete: $id" }
           }
           $existingCandidate = @($assetNames | Where-Object { $_ -ceq $candidateName })
           $existingPackage = @($assetNames | Where-Object { $_ -ceq $packageName })

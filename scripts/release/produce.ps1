@@ -7,8 +7,7 @@ param(
     [Parameter(Mandatory = $true)][string]$RedLeafToolDll,
     [Parameter(Mandatory = $true)][string]$LeafSdkProject,
     [Parameter(Mandatory = $true)][string]$RedBambooLock,
-    [Parameter(Mandatory = $true)][string]$NodeExecutable,
-    [Parameter(Mandatory = $true)][string]$CentralReleaseTag
+    [Parameter(Mandatory = $true)][string]$NodeExecutable
 )
 
 $ErrorActionPreference = 'Stop'
@@ -49,10 +48,11 @@ function Copy-SafeTree([string]$Source, [string]$Destination, [string]$Label) {
         else { Copy-SafeFile $item.FullName $target $Label }
     }
 }
-function Resolve-CentralReleaseUrl([string]$Tag, [string]$Version) {
-    if ($Tag -notmatch '^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$') { Fail 'CentralReleaseTag must be a safe GitHub release-tag segment.' }
-    if ($Version -notmatch '^[0-9A-Za-z][0-9A-Za-z._-]{0,127}$') { Fail 'Doctor version must be a safe package-name segment.' }
-    return "https://github.com/RedBamboo-Interactive/redleaf/releases/download/$Tag/doctor-$Version.leafpkg"
+function Resolve-ProducerReleaseUrl([string]$Version) {
+    if ($Version -notmatch '^[0-9A-Za-z][0-9A-Za-z._-]{0,127}$') {
+        Fail 'Doctor version must be a safe package-name segment.'
+    }
+    return "https://github.com/rblaurent/leaf-doctor/releases/download/leaf-doctor-unsigned-candidates/doctor-$Version.leafpkg"
 }
 
 $pluginRoot = Resolve-Directory $PluginDir 'PluginDir'
@@ -68,7 +68,7 @@ $runtimeLock = Get-Content -LiteralPath (Join-Path $pluginRoot $producerInput.ru
 
 if ([string]$metadataObject.metadataType -cne 'redleaf-extension-release-metadata' -or [int]$metadataObject.schemaVersion -ne 1) { Fail 'Metadata contract is invalid.' }
 if ([string]$manifest.id -cne 'doctor' -or [string]$metadataObject.classification -cne 'protected') { Fail 'Doctor identity/classification is invalid.' }
-$artifactUrl = Resolve-CentralReleaseUrl $CentralReleaseTag ([string]$manifest.version)
+$artifactUrl = Resolve-ProducerReleaseUrl ([string]$manifest.version)
 if ((Get-FileHash -LiteralPath $node -Algorithm SHA256).Hash.ToLowerInvariant() -cne [string]$runtimeLock.node.executable.sha256) { Fail 'Bundled node.exe does not match the committed runtime lock.' }
 $nodeVersion = (& $node --version).Trim().TrimStart('v')
 if ($nodeVersion -cne [string]$runtimeLock.node.version) { Fail 'Bundled node.exe version does not match the committed runtime lock.' }

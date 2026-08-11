@@ -1,10 +1,14 @@
 import assert from "node:assert/strict"
-import { readFileSync } from "node:fs"
+import { readFileSync as readFileRaw } from "node:fs"
 import { resolve } from "node:path"
 import test from "node:test"
 import { buildMetadata, canonical, validateDescriptor, validateInput } from "../scripts/release/metadata.mjs"
 
 const root = resolve(import.meta.dirname, "..")
+const readFileSync = (path, encoding) => {
+  const value = readFileRaw(path, encoding)
+  return typeof value === "string" ? value.replaceAll("\r\n", "\n") : value
+}
 const readJson = (path) => JSON.parse(readFileSync(resolve(root, path), "utf8"))
 const input = readJson("release/producer-input.v1.json")
 const manifest = readJson("plugin.json")
@@ -76,20 +80,19 @@ test("producer invokes the canonical stage, filter, produce, and ingest commands
   for (const command of ["extension stage-manifest", "extension filter-backend", "extension', 'produce", "candidate ingest-extension"]) assert.match(producer, new RegExp(command.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")))
   assert.match(producer, /--locked-mode/)
   assert.match(producer, /--frozen-lockfile/)
-  assert.match(producer, /https:\/\/github\.com\/RedBamboo-Interactive\/redleaf\/releases\/download\/\$Tag\/doctor-\$Version\.leafpkg/)
-  assert.match(producer, /CentralReleaseTag must be a safe GitHub release-tag segment/)
+  assert.match(producer, /https:\/\/github\.com\/rblaurent\/leaf-doctor\/releases\/download\/leaf-doctor-unsigned-candidates\/doctor-\$Version\.leafpkg/)
+  assert.match(producer, /Doctor version must be a safe package-name segment/)
   assert.doesNotMatch(producer, /ArtifactUrl|artifact_url/)
   assert.doesNotMatch(producer, /candidate finalize|registry build|publication |--channel/i)
 })
 
-test("workflow is immutable, tag-derived, and reproduces all four handoff files", () => {
+test("workflow is immutable, producer-scoped, and reproduces all four handoff files", () => {
   const workflow = readFileSync(resolve(root, ".github/workflows/release-candidate.yml"), "utf8")
   assert.match(workflow, /ref: \$\{\{ github\.workflow_sha \}\}/)
   assert.match(workflow, /source-commit '\$\{\{ github\.workflow_sha \}\}'/)
   assert.doesNotMatch(workflow, /uses: [^@\n]+@(main|master|v\d+)\s*$/m)
   assert.doesNotMatch(workflow, /artifact_url/)
-  assert.match(workflow, /central_release_tag/)
-  assert.match(workflow, /CENTRAL_RELEASE_TAG: \$\{\{ inputs\.central_release_tag \}\}/)
+  assert.doesNotMatch(workflow, /central_release_tag|CENTRAL_RELEASE_TAG/)
   assert.match(workflow, /repository: rblaurent\/leaf-doctor/)
   assert.match(workflow, /github\.repository == 'rblaurent\/leaf-doctor'/)
   assert.match(workflow, /repository: RedBamboo-Interactive\/redleaf/)
@@ -113,13 +116,11 @@ test("serialized bridge appends only the exact immutable candidate pair", () => 
   assert.match(workflow, /Candidate ID is not a standard safe asset token/)
   assert.match(workflow, /Candidate artifact facts do not match the \.leafpkg handoff bytes/)
   assert.match(workflow, /candidateName = "\$candidateId\.candidate\.json"/)
-  assert.match(workflow, /packageName = "\$candidateId\.leafpkg"/)
-  assert.match(workflow, /Existing unsigned candidate pair is incomplete/)
+  assert.match(workflow, /packageName = \[IO\.Path\]::GetFileName/)
+  assert.match(workflow, /only one member of the immutable pair exists/)
   assert.match(workflow, /gh release create \$tag --repo \$repository --target '\$\{\{ github\.workflow_sha \}\}' --prerelease --latest=false/)
-  assert.match(workflow, /gh api "repos\/\$repository" --jq \.visibility/)
-  assert.match(workflow, /\$visibility -cne 'public'/)
+  assert.doesNotMatch(workflow, /visibility|already be public|public prerelease/i)
   assert.match(workflow, /gh release view \$tag --repo \$repository --json isDraft,isPrerelease,assets/)
-  assert.match(workflow, /Fixed unsigned-candidate release must be a public prerelease/)
   assert.match(workflow, /gh release upload \$tag --repo \$repository \$publishCandidate \$publishPackage/)
   assert.match(workflow, /gh release download \$tag --repo \$repository --pattern \$name --dir \$download/)
   assert.doesNotMatch(workflow, /--clobber|gh release delete|gh release delete-asset|id-token:/i)

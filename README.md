@@ -35,11 +35,10 @@ runs RedLeaf's canonical manifest stage, backend filter, package producer, and
 extension ingestor. Two isolated passes must produce identical `.leafpkg`, component
 descriptor, unsigned candidate, and signature-input bytes.
 
-Its required `central_release_tag` is a safe tag segment, not an arbitrary URL. The
-candidate ingestor derives the only accepted artifact location as
-`https://github.com/RedBamboo-Interactive/redleaf/releases/download/<tag>/doctor-<version>.leafpkg`.
+The candidate ingestor derives the only accepted artifact location as
+`https://github.com/rblaurent/leaf-doctor/releases/download/leaf-doctor-unsigned-candidates/doctor-<version>.leafpkg`.
 After reproducibility checks, a separate serialized bridge on `rblaurent/leaf-doctor`
-adds only `<candidateId>.candidate.json` and `<candidateId>.leafpkg` to the fixed
+adds only `<candidateId>.candidate.json` and `doctor-<version>.leafpkg` to the fixed
 `leaf-doctor-unsigned-candidates` release. Existing pairs are re-downloaded and
 hashed for identical reuse; partial or byte-different pairs fail without overwrite or
 deletion. The bridge does not sign, request an identity token, or access keys.
