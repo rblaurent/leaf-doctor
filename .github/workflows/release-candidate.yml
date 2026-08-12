@@ -2,13 +2,11 @@ name: Build and bridge Doctor unsigned candidate
 
 on:
   workflow_call:
-    inputs:
     secrets:
       CROSS_REPO_TOKEN:
         description: Optional token that can read pinned RedLeaf and RedBamboo commits.
         required: false
-  workflow_dispatch:
-    inputs:
+  workflow_dispatch: {}
 
 permissions: {}
 
