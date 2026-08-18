@@ -1,6 +1,6 @@
 {
   "name": "@redbamboo/plugin-doctor",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "Doctor extension settings panel",
   "type": "module",
   "private": true,

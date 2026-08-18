@@ -65,6 +65,24 @@ test('normalizes the detached runtime contract', () => {
   assert.equal(normalized.controlKey.length, 64);
 });
 
+test('normalizes the legacy authenticated API probe to public discovery', () => {
+  const normalized = normalizeConfig({
+    services: {
+      api: {
+        checks: [
+          { name: 'Entities API', path: '/api/entities?type=agent&limit=1' },
+          { name: 'Compute Sessions', path: '/ai-session/quality-modes' },
+        ],
+      },
+    },
+  });
+
+  assert.deepEqual(normalized.services.api.checks, [
+    { name: 'Entities API', path: '/api/entities?type=agent&limit=1' },
+    { name: 'Discovery API', path: '/discover' },
+  ]);
+});
+
 test('dashboard exposes both doctor providers and has valid client JavaScript', () => {
   const html = fs.readFileSync(path.join(__dirname, 'dashboard.html'), 'utf8');
   const scripts = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)].map(match => match[1]);

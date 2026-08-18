@@ -110,7 +110,7 @@
       "id": "doctor-runtime",
       "management": "managedByExtension",
       "requirement": "required",
-      "versionConstraint": "1.1.0",
+      "versionConstraint": "1.1.1",
       "interface": "detached loopback HTTP GET /health returning service, version, configRevision; authenticated reconcile and shutdown control",
       "sourceMarkers": [
         "leaf-doctor.js#if (url.pathname === '/health')",

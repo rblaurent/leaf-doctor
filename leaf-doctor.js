@@ -32,6 +32,14 @@ function normalizeConfig(value) {
   next.paths = next.paths || {};
   next.tunnel = next.tunnel || { enabled: false };
   next.services = next.services || {};
+  const apiChecks = next.services.api?.checks;
+  if (Array.isArray(apiChecks)) {
+    next.services.api.checks = apiChecks.map(check =>
+      check?.path === '/ai-session/quality-modes'
+        ? { ...check, name: 'Discovery API', path: '/discover' }
+        : check
+    );
+  }
   if (!next.authToken) next.authToken = crypto.randomBytes(32).toString('hex');
   if (!next.controlKey) next.controlKey = crypto.randomBytes(32).toString('hex');
   return next;

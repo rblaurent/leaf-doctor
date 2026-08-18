@@ -487,7 +487,7 @@ public sealed class DoctorRuntimeService(
             target[to] = value;
     }
 
-    private static JsonObject DefaultServices() => new()
+    internal static JsonObject DefaultServices() => new()
     {
         ["redleaf"] = new JsonObject { ["port"] = 18804, ["pingPath"] = "/ping" },
         ["redcompute"] = new JsonObject { ["port"] = 18800, ["pingPath"] = "/ping" },
@@ -502,7 +502,7 @@ public sealed class DoctorRuntimeService(
                 new JsonObject { ["name"] = "Entities API", ["path"] = "/api/entities?type=agent&limit=1" },
                 new JsonObject { ["name"] = "Automations", ["path"] = "/api/automations/status" },
                 new JsonObject { ["name"] = "Streams", ["path"] = "/api/streams" },
-                new JsonObject { ["name"] = "Compute Sessions", ["path"] = "/ai-session/quality-modes" },
+                new JsonObject { ["name"] = "Discovery API", ["path"] = "/discover" },
             },
         },
     };

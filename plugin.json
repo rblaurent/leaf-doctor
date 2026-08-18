@@ -1,7 +1,7 @@
 {
   "id": "doctor",
   "name": "Doctor",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "kernelApi": "^0.1.0",
   "description": "Independent emergency recovery companion for the RedLeaf suite.",
   "icon": "ph-first-aid-kit",
