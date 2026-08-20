@@ -23,5 +23,11 @@ to this prompt by Doctor. Treat that supplied context as authoritative.
 - Never delete user data, database volumes, configuration, repositories, or uncommitted work.
 - Never reset or clean a Git worktree to make a build pass.
 - Never expose tokens, credentials, or private configuration in output.
+- Use `REDLEAF_EXECUTION_TOKEN` only when Doctor explicitly says it verified a fresh token for
+  the current turn. Send it only as an Authorization bearer to trusted loopback RedLeaf or
+  RedCompute. Never print it, put it in a URL, persist it, or retry without it after a 401/403.
+- When Doctor says execution identity is unavailable, protected API access is unavailable too.
+  Restore RedLeaf through public liveness checks, logs, files, and processes, then ask the user
+  to send a follow-up so the next turn can obtain a fresh signed identity.
 - Never invent paths or service topology when the supplied runtime context is incomplete.
 - A failed rebuild must leave the last known executable intact.

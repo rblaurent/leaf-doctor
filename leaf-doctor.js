@@ -379,8 +379,7 @@ async function restart({ rebuild = true } = {}) {
   return { success: ready, steps };
 }
 
-let doctorSession = null;
-let lastDoctorResult = null;
+let doctorConversation = null;
 
 function resolveDoctorCommand(provider, runtimeConfig = config, environment = process.env) {
   const configuredPath = runtimeConfig.paths?.[`${provider.id}Cli`];
@@ -394,17 +393,33 @@ function resolveDoctorCommand(provider, runtimeConfig = config, environment = pr
   return provider.command;
 }
 
-function buildDoctorLaunch(providerId, fullPrompt, runtimeConfig = config, environment = process.env) {
+function buildDoctorLaunch(
+  providerId,
+  fullPrompt,
+  runtimeConfig = config,
+  environment = process.env,
+  session = {},
+) {
   const provider = DOCTOR_PROVIDERS[providerId];
   if (!provider) {
     throw new Error(`Unsupported doctor provider '${providerId}'. Use claude or codex.`);
   }
 
   const dangerous = runtimeConfig.dangerousPermissions !== false;
-  const args = provider.args.filter(arg => dangerous || ![
-    '--dangerously-skip-permissions',
-    '--dangerously-bypass-approvals-and-sandbox',
-  ].includes(arg));
+  let args;
+  if (providerId === 'claude') {
+    args = ['--print'];
+    if (dangerous) args.push('--dangerously-skip-permissions');
+    if (session.resume) args.push('--resume', session.providerSessionId);
+    else if (session.providerSessionId) args.push('--session-id', session.providerSessionId);
+  } else {
+    args = ['exec'];
+    if (session.resume) args.push('resume');
+    if (dangerous) args.push('--dangerously-bypass-approvals-and-sandbox');
+    args.push('--json');
+    if (session.resume) args.push(session.providerSessionId);
+    args.push('-');
+  }
   return {
     provider,
     command: resolveDoctorCommand(provider, runtimeConfig, environment),
@@ -414,13 +429,271 @@ function buildDoctorLaunch(providerId, fullPrompt, runtimeConfig = config, envir
   };
 }
 
-function runDoctor(providerId = config.doctorProvider || 'claude') {
-  if (doctorSession) {
+function doctorBrokerUrl(pathname) {
+  const port = Number(config.services?.redleaf?.port || 18804);
+  return `http://127.0.0.1:${port}${pathname}`;
+}
+
+async function acquireExecutionIdentity(sessionId, providerId) {
+  let response;
+  try {
+    response = await fetch(doctorBrokerUrl('/api/extensions/doctor/execution-token'), {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Doctor-Control': config.controlKey,
+      },
+      body: JSON.stringify({ sessionId, provider: providerId }),
+      signal: AbortSignal.timeout(4000),
+    });
+  } catch (error) {
+    return { state: 'unavailable', detail: error.message };
+  }
+
+  // A stopped kernel or an older kernel without the broker must not make emergency filesystem
+  // recovery impossible. In that case we launch without a bearer and say so explicitly.
+  if (response.status === 404 || response.status === 503)
+    return { state: 'unavailable', detail: `Token broker returned ${response.status}` };
+  if (!response.ok)
+    throw new Error(`Doctor execution-token broker rejected the request (${response.status})`);
+
+  const issued = await response.json();
+  if (typeof issued.accessToken !== 'string' || issued.accessToken.length < 32)
+    throw new Error('Doctor execution-token broker returned no signed bearer');
+  const expiresAt = Date.parse(issued.expiresAt);
+  if (!Number.isFinite(expiresAt) || expiresAt <= Date.now() + 60_000)
+    throw new Error('Doctor execution-token broker returned an expired or near-expiry bearer');
+
+  const verification = await fetch(doctorBrokerUrl('/auth/execution-context'), {
+    headers: { Authorization: `Bearer ${issued.accessToken}` },
+    signal: AbortSignal.timeout(4000),
+  });
+  if (!verification.ok)
+    throw new Error(`RedLeaf rejected the newly issued Doctor bearer (${verification.status})`);
+  const context = await verification.json();
+  const identity = context.identity;
+  const hasSessionContext = Array.isArray(identity?.context)
+    && identity.context.some(item => item.kind === 'doctor-session' && item.id === sessionId);
+  if (context.tokenUse !== 'execution'
+      || identity?.app?.id !== 'doctor'
+      || identity?.actor?.id !== `doctor-${providerId}`
+      || identity?.beneficiary?.kind !== 'system'
+      || !hasSessionContext) {
+    throw new Error('RedLeaf returned a signed bearer with the wrong Doctor execution identity');
+  }
+
+  return { state: 'verified', accessToken: issued.accessToken, expiresAt: issued.expiresAt };
+}
+
+function credentialNotice(credential) {
+  if (credential.state === 'verified') {
+    return 'A fresh signed Doctor execution token was verified against RedLeaf and is available in REDLEAF_EXECUTION_TOKEN for this turn. Never print, log, persist, or forward it. Send it only as a Bearer token to trusted loopback RedLeaf or RedCompute endpoints.';
+  }
+  return 'RedLeaf could not mint a signed execution token for this turn. REDLEAF_EXECUTION_TOKEN is deliberately absent. Limit yourself to public liveness/discovery, local files, logs, and process recovery. Do not call protected APIs or claim authenticated verification. After RedLeaf is restored, the next Doctor message will acquire a fresh token.';
+}
+
+function appendConversationOutput(conversation, text) {
+  if (!text) return;
+  conversation.output.push(text);
+}
+
+function createSecretRedactor(secrets, emit) {
+  const values = secrets.filter(value => typeof value === 'string' && value.length > 0);
+  let pending = '';
+
+  const replace = text => {
+    let result = text;
+    for (const secret of values) result = result.split(secret).join('[REDACTED]');
+    return result;
+  };
+
+  const write = chunk => {
+    pending += String(chunk || '');
+    if (!values.length) {
+      emit(pending);
+      pending = '';
+      return;
+    }
+
+    pending = replace(pending);
+    let held = 0;
+    for (const secret of values) {
+      const max = Math.min(secret.length - 1, pending.length);
+      for (let length = max; length > held; length--) {
+        if (pending.endsWith(secret.slice(0, length))) {
+          held = length;
+          break;
+        }
+      }
+    }
+    const safeLength = pending.length - held;
+    if (safeLength > 0) emit(pending.slice(0, safeLength));
+    pending = pending.slice(safeLength);
+  };
+
+  const flush = () => {
+    if (pending) emit(replace(pending));
+    pending = '';
+  };
+  return { write, flush };
+}
+
+function codexItemText(item, property) {
+  const value = item?.[property];
+  if (typeof value === 'string') return value;
+  if (Array.isArray(value)) {
+    return value.map(part => typeof part === 'string' ? part : part?.text || '')
+      .filter(Boolean).join('\n\n');
+  }
+  return '';
+}
+
+function consumeCodexEvent(conversation, line) {
+  let event;
+  try { event = JSON.parse(line); }
+  catch {
+    appendConversationOutput(conversation, line + '\n');
+    return;
+  }
+
+  if (event.type === 'thread.started') {
+    const threadId = event.thread_id || event.threadId;
+    if (threadId) conversation.providerSessionId = threadId;
+    return;
+  }
+
+  const item = event.item || {};
+  const itemType = String(item.type || '').replace(/_([a-z])/g, (_, c) => c.toUpperCase());
+  if (event.type === 'item.started' && itemType === 'commandExecution') {
+    appendConversationOutput(conversation, `\n$ ${item.command || 'command'}\n`);
+    return;
+  }
+  if (event.type === 'item.completed') {
+    if (itemType === 'agentMessage') {
+      appendConversationOutput(conversation, `${codexItemText(item, 'text')}\n`);
+    } else if (itemType === 'commandExecution') {
+      const output = item.aggregated_output || item.aggregatedOutput || '';
+      if (output) appendConversationOutput(conversation, output.endsWith('\n') ? output : output + '\n');
+    } else if (itemType === 'fileChange') {
+      const paths = Array.isArray(item.changes)
+        ? item.changes.map(change => change.path).filter(Boolean) : [];
+      if (paths.length) appendConversationOutput(conversation, `Changed: ${paths.join(', ')}\n`);
+    }
+    return;
+  }
+  if (event.type === 'turn.failed') {
+    appendConversationOutput(conversation, `\nTurn failed: ${event.error?.message || event.message || 'unknown error'}\n`);
+  }
+}
+
+async function executeDoctorTurn(conversation, prompt, resume) {
+  conversation.running = true;
+  conversation.lastExitCode = null;
+  conversation.credentialState = 'checking';
+
+  let credential;
+  try {
+    credential = await acquireExecutionIdentity(conversation.id, conversation.provider.id);
+  } catch (error) {
+    conversation.running = false;
+    conversation.credentialState = 'rejected';
+    appendConversationOutput(conversation, `\n--- Credential error: ${error.message} ---\n`);
+    return { status: 'error', message: error.message };
+  }
+  conversation.credentialState = credential.state;
+
+  const turnPrompt = `${prompt}\n\nExecution identity for this turn:\n${credentialNotice(credential)}`;
+  let launch;
+  try {
+    launch = buildDoctorLaunch(
+      conversation.provider.id,
+      turnPrompt,
+      config,
+      process.env,
+      { resume, providerSessionId: conversation.providerSessionId },
+    );
+  } catch (error) {
+    conversation.running = false;
+    return { status: 'error', message: error.message };
+  }
+
+  const childEnvironment = { ...process.env };
+  delete childEnvironment.REDLEAF_EXECUTION_TOKEN;
+  if (credential.state === 'verified')
+    childEnvironment.REDLEAF_EXECUTION_TOKEN = credential.accessToken;
+
+  const child = spawn(launch.command, launch.args, {
+    cwd: launch.cwd,
+    stdio: ['pipe', 'pipe', 'pipe'],
+    env: childEnvironment,
+    shell: true,
+    timeout: 300000,
+  });
+  conversation.child = child;
+  conversation.turnCount += 1;
+
+  let codexBuffer = '';
+  const consumeStdout = text => {
+    if (conversation.provider.id !== 'codex') {
+      appendConversationOutput(conversation, text);
+      return;
+    }
+    codexBuffer += text;
+    const lines = codexBuffer.split(/\r?\n/);
+    codexBuffer = lines.pop() || '';
+    for (const line of lines) if (line.trim()) consumeCodexEvent(conversation, line);
+  };
+  const secrets = credential.state === 'verified' ? [credential.accessToken] : [];
+  const stdoutRedactor = createSecretRedactor(secrets, consumeStdout);
+  const stderrRedactor = createSecretRedactor(
+    secrets,
+    text => appendConversationOutput(conversation, text),
+  );
+  child.stdout.on('data', data => stdoutRedactor.write(data.toString()));
+  child.stderr.on('data', data => stderrRedactor.write(data.toString()));
+
+  const complete = code => {
+    if (!conversation.running) return;
+    stdoutRedactor.flush();
+    stderrRedactor.flush();
+    if (codexBuffer.trim()) consumeCodexEvent(conversation, codexBuffer);
+    conversation.running = false;
+    conversation.child = null;
+    conversation.lastExitCode = code;
+    conversation.completedAt = new Date().toISOString();
+    if (!conversation.providerSessionId)
+      appendConversationOutput(conversation, '\n--- Session identity was not reported; continuation is unavailable. ---\n');
+    appendConversationOutput(conversation, `\n--- Doctor turn exited with code ${code} ---`);
+    console.log(`${launch.provider.label} doctor turn exited with code ${code}`);
+  };
+
+  child.on('exit', complete);
+  child.on('error', error => {
+    appendConversationOutput(conversation, `\n--- Doctor turn error: ${error.message} ---\n`);
+    complete(-1);
+  });
+  child.stdin.on('error', error => {
+    appendConversationOutput(conversation, `\n--- Doctor prompt input error: ${error.message} ---\n`);
+  });
+  child.stdin.end(launch.stdin);
+
+  return {
+    status: 'started',
+    provider: launch.provider.id,
+    providerLabel: launch.provider.label,
+    conversationId: conversation.id,
+    credentialState: conversation.credentialState,
+    message: `${launch.provider.label} Doctor turn started.`,
+  };
+}
+
+async function runDoctor(providerId = config.doctorProvider || 'claude') {
+  if (doctorConversation?.running) {
     return {
       status: 'already_running',
-      provider: doctorSession.provider.id,
-      providerLabel: doctorSession.provider.label,
-      message: `A ${doctorSession.provider.label} doctor session is already in progress.`,
+      provider: doctorConversation.provider.id,
+      providerLabel: doctorConversation.provider.label,
+      message: `A ${doctorConversation.provider.label} Doctor turn is already in progress.`,
     };
   }
 
@@ -439,82 +712,41 @@ function runDoctor(providerId = config.doctorProvider || 'claude') {
   };
   const fullPrompt = `${prompt}\n\nRuntime context supplied by Doctor extension settings:\n${JSON.stringify(recoveryContext, null, 2)}\n\nDiagnose and fix the Leaf suite now. Run the diagnostic procedure, fix any issues found, and verify all services are running. Report everything you do.`;
 
-  let launch;
-  try {
-    launch = buildDoctorLaunch(providerId, fullPrompt);
-  } catch (error) {
-    return { status: 'error', message: error.message };
-  }
-
-  const output = [];
-  let settled = false;
-  let resolvePromise;
-  const donePromise = new Promise(r => { resolvePromise = r; });
-
-  const child = spawn(launch.command, launch.args, {
-    cwd: launch.cwd,
-    stdio: ['pipe', 'pipe', 'pipe'],
-    env: { ...process.env },
-    shell: true,
-    timeout: 300000,
-  });
-
-  doctorSession = {
-    child,
-    output,
-    provider: launch.provider,
+  const provider = DOCTOR_PROVIDERS[providerId];
+  if (!provider)
+    return { status: 'error', message: `Unsupported doctor provider '${providerId}'.` };
+  const id = crypto.randomUUID();
+  doctorConversation = {
+    id,
+    child: null,
+    output: [],
+    provider,
+    providerSessionId: providerId === 'claude' ? id : null,
     startedAt: new Date().toISOString(),
-    done: donePromise,
+    completedAt: null,
+    running: false,
+    turnCount: 0,
+    credentialState: 'checking',
+    lastExitCode: null,
   };
-  lastDoctorResult = null;
+  return executeDoctorTurn(doctorConversation, fullPrompt, false);
+}
 
-  child.stdout.on('data', d => {
-    const text = d.toString();
-    output.push(text);
-    console.log(`[doctor:${launch.provider.id}] ${text.trim()}`);
-  });
-  child.stderr.on('data', d => {
-    const text = d.toString();
-    output.push(text);
-    console.log(`[doctor:${launch.provider.id}:err] ${text.trim()}`);
-  });
+async function sendDoctorMessage(message) {
+  const text = String(message || '').trim();
+  if (!text) return { status: 'error', message: 'Message is required.' };
+  if (text.length > 32_000) return { status: 'error', message: 'Message is too long.' };
+  if (!doctorConversation) return { status: 'error', message: 'Start a Doctor session first.' };
+  if (doctorConversation.running)
+    return { status: 'already_running', message: 'The current Doctor turn is still running.' };
+  if (!doctorConversation.providerSessionId)
+    return { status: 'error', message: 'The provider did not return a resumable session identity.' };
 
-  const completeSession = (code) => {
-    if (settled) return;
-    settled = true;
-    lastDoctorResult = {
-      provider: launch.provider.id,
-      providerLabel: launch.provider.label,
-      startedAt: doctorSession?.startedAt,
-      completedAt: new Date().toISOString(),
-      exitCode: code,
-      outputSoFar: output.join(''),
-    };
-    doctorSession = null;
-    resolvePromise({ code, output: lastDoctorResult.outputSoFar });
-  };
-
-  child.on('exit', (code) => {
-    output.push(`\n--- Doctor session exited with code ${code} ---`);
-    console.log(`${launch.provider.label} doctor session exited with code ${code}`);
-    completeSession(code);
-  });
-  child.on('error', (err) => {
-    output.push(`\n--- Doctor session error: ${err.message} ---`);
-    console.error('Doctor session error:', err);
-    completeSession(-1);
-  });
-  child.stdin.on('error', (err) => {
-    output.push(`\n--- Doctor prompt input error: ${err.message} ---`);
-  });
-  child.stdin.end(launch.stdin);
-
-  return {
-    status: 'started',
-    provider: launch.provider.id,
-    providerLabel: launch.provider.label,
-    message: `${launch.provider.label} doctor session started. Poll /doctor/status for progress.`,
-  };
+  appendConversationOutput(
+    doctorConversation,
+    `\n\n--- You ---\n${text}\n\n--- ${doctorConversation.provider.label} ---\n`,
+  );
+  return executeDoctorTurn(doctorConversation, text, true);
 }
 
 const server = http.createServer(async (req, res) => {
@@ -664,25 +896,47 @@ const server = http.createServer(async (req, res) => {
 
     if (req.method === 'POST' && url.pathname === '/doctor') {
       const providerId = url.searchParams.get('provider') || config.doctorProvider || 'claude';
-      const result = runDoctor(providerId);
+      const result = await runDoctor(providerId);
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(result));
+      return;
+    }
+
+    if (req.method === 'POST' && url.pathname === '/doctor/message') {
+      let body = '';
+      for await (const chunk of req) {
+        body += chunk;
+        if (body.length > 40_000) throw new Error('Doctor message body is too large');
+      }
+      let payload;
+      try { payload = JSON.parse(body || '{}'); }
+      catch { throw new Error('Doctor message body must be valid JSON'); }
+      const result = await sendDoctorMessage(payload.message);
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify(result));
       return;
     }
 
     if (req.method === 'GET' && url.pathname === '/doctor/status') {
-      if (!doctorSession) {
+      if (!doctorConversation) {
         res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ running: false, ...lastDoctorResult }));
+        res.end(JSON.stringify({ running: false, canMessage: false }));
         return;
       }
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({
-        running: true,
-        startedAt: doctorSession.startedAt,
-        provider: doctorSession.provider.id,
-        providerLabel: doctorSession.provider.label,
-        outputSoFar: doctorSession.output.join(''),
+        running: doctorConversation.running,
+        canMessage: !doctorConversation.running && !!doctorConversation.providerSessionId,
+        conversationId: doctorConversation.id,
+        startedAt: doctorConversation.startedAt,
+        completedAt: doctorConversation.completedAt,
+        provider: doctorConversation.provider.id,
+        providerLabel: doctorConversation.provider.label,
+        providerSessionIdAvailable: !!doctorConversation.providerSessionId,
+        turnCount: doctorConversation.turnCount,
+        credentialState: doctorConversation.credentialState,
+        exitCode: doctorConversation.lastExitCode,
+        outputSoFar: doctorConversation.output.join(''),
       }));
       return;
     }
@@ -776,6 +1030,7 @@ module.exports = {
   DOCTOR_PROVIDERS,
   buildDoctorLaunch,
   checkControl,
+  createSecretRedactor,
   loadRuntimeConfig,
   normalizeConfig,
   resolveDoctorCommand,

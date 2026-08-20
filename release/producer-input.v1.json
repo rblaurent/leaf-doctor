@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "inputType": "leaf-doctor-extension-release-producer-input",
   "classification": "protected",
-  "redleafReleaseToolCommit": "4bf0894014b392e60cf0b5c6ca85920428ba7516",
+  "redleafReleaseToolCommit": "82638404df0cb121a2799df6d126bd262c7be5bc",
   "toolchain": {
     "node": "22.23.1",
     "pnpm": "11.0.9",
@@ -11,7 +11,7 @@
   },
   "leafSdk": {
     "repository": "RedBamboo-Interactive/redleaf",
-    "commit": "4bf0894014b392e60cf0b5c6ca85920428ba7516",
+    "commit": "82638404df0cb121a2799df6d126bd262c7be5bc",
     "sourcePath": "src/Leaf.Sdk"
   },
   "redbamboo": {
@@ -110,7 +110,7 @@
       "id": "doctor-runtime",
       "management": "managedByExtension",
       "requirement": "required",
-      "versionConstraint": "1.1.1",
+      "versionConstraint": "1.2.0",
       "interface": "detached loopback HTTP GET /health returning service, version, configRevision; authenticated reconcile and shutdown control",
       "sourceMarkers": [
         "leaf-doctor.js#if (url.pathname === '/health')",

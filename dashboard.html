@@ -426,6 +426,62 @@
     overflow-wrap: anywhere;
   }
 
+  .conversation-state {
+    display: none;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 12px;
+    color: var(--muted-foreground);
+    font-size: 12px;
+  }
+
+  .conversation-state.is-visible { display: flex; }
+
+  .conversation-state__dot {
+    width: 7px;
+    height: 7px;
+    flex: 0 0 auto;
+    border-radius: 999px;
+    background: var(--status-live);
+  }
+
+  .conversation-state.is-unavailable .conversation-state__dot { background: var(--accent-gold); }
+  .conversation-state.is-rejected .conversation-state__dot { background: var(--destructive); }
+
+  .doctor-composer {
+    display: none;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 8px;
+    align-items: end;
+    margin-top: 14px;
+    padding-top: 14px;
+    border-top: 1px solid var(--border);
+  }
+
+  .doctor-composer.is-visible { display: grid; }
+
+  .doctor-composer textarea {
+    width: 100%;
+    min-height: 72px;
+    max-height: 180px;
+    resize: vertical;
+    box-sizing: border-box;
+    padding: 10px 11px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    outline: none;
+    color: var(--foreground);
+    background: var(--background);
+    font: 13px/1.45 var(--font-sans);
+  }
+
+  .doctor-composer textarea:focus {
+    border-color: var(--ring);
+    box-shadow: 0 0 0 3px rgb(from var(--ring) r g b / 0.18);
+  }
+
+  .doctor-composer [data-slot="button"] { height: 40px; }
+
   .spinner {
     width: 13px;
     height: 13px;
@@ -442,6 +498,7 @@
     main { padding-top: 28px; }
     .header-state { display: none; }
     .page-description { font-size: 13px; }
+    .doctor-composer { grid-template-columns: 1fr; }
   }
 
   @media (pointer: coarse) {
@@ -528,7 +585,17 @@
         <div data-slot="card-title" id="output-title">Recovery output</div>
       </div>
       <div data-slot="card-content">
+        <div class="conversation-state" id="conversation-state">
+          <span class="conversation-state__dot"></span>
+          <span id="conversation-state-text"></span>
+        </div>
         <pre class="output" id="output"></pre>
+        <form class="doctor-composer" id="doctor-composer">
+          <textarea id="doctor-message" aria-label="Message to the Doctor session" placeholder="Explain what it misunderstood or what you expect it to do next…" maxlength="32000"></textarea>
+          <button data-slot="button" data-variant="default" id="doctor-send" type="submit">
+            <i class="ph-bold ph-paper-plane-tilt"></i><span>Send</span>
+          </button>
+        </form>
       </div>
     </section>
   </main>
@@ -537,10 +604,15 @@
 <script>
 const BASE = window.location.origin;
 
-function api(path, method = 'GET') {
+function api(path, method = 'GET', body = null) {
   const url = new URL(path, BASE);
   const expectsText = method === 'POST' && url.pathname === '/diagnose';
-  return fetch(url, { method, credentials: 'same-origin' }).then(async response => {
+  const options = { method, credentials: 'same-origin' };
+  if (body !== null) {
+    options.headers = { 'Content-Type': 'application/json' };
+    options.body = JSON.stringify(body);
+  }
+  return fetch(url, options).then(async response => {
     if (!response.ok) {
       let detail = response.statusText;
       try { detail = (await response.json()).error || detail; } catch {}
@@ -624,6 +696,37 @@ function showOutput(text) {
   output.scrollTop = output.scrollHeight;
 }
 
+function updateConversationControls(status) {
+  const state = document.getElementById('conversation-state');
+  const stateText = document.getElementById('conversation-state-text');
+  const composer = document.getElementById('doctor-composer');
+  const message = document.getElementById('doctor-message');
+  const send = document.getElementById('doctor-send');
+  if (!status?.conversationId) {
+    state.className = 'conversation-state';
+    composer.className = 'doctor-composer';
+    return;
+  }
+
+  state.className = `conversation-state is-visible ${status.credentialState === 'verified' ? '' : `is-${status.credentialState || 'unavailable'}`}`;
+  const identity = status.credentialState === 'verified'
+    ? 'Signed execution identity verified'
+    : status.credentialState === 'checking'
+      ? 'Checking execution identity…'
+      : status.credentialState === 'rejected'
+        ? 'Execution identity rejected'
+        : 'Recovery mode: protected APIs unavailable';
+  stateText.textContent = `${status.providerLabel || 'Doctor'} · ${identity} · ${status.turnCount || 0} turn${status.turnCount === 1 ? '' : 's'}`;
+  composer.className = `doctor-composer ${status.canMessage || status.running ? 'is-visible' : ''}`;
+  message.disabled = !!status.running;
+  setButton(send, {
+    disabled: !!status.running || !status.canMessage,
+    icon: 'ph-paper-plane-tilt',
+    label: status.running ? 'Working…' : 'Send',
+    loading: !!status.running,
+  });
+}
+
 function setButton(button, { disabled, icon, label, loading = false }) {
   button.disabled = disabled;
   button.innerHTML = loading
@@ -680,13 +783,13 @@ async function runDoctorSession(provider) {
     const result = await api(`/doctor?provider=${encodeURIComponent(provider)}`, 'POST');
     if (result.status === 'already_running') {
       provider = result.provider || provider;
-      showOutput(`${result.providerLabel || 'Doctor'} session already in progress. Polling for output...`);
+      showOutput(`${result.providerLabel || 'Doctor'} turn already in progress. Polling for output...`);
     } else if (result.status === 'error') {
       showOutput('Error: ' + result.message);
       setDoctorButtons({ disabled: false });
       return;
     } else {
-      showOutput(`${result.providerLabel} doctor session started. Polling for output...`);
+      showOutput(`${result.providerLabel} Doctor session started. Polling for output...`);
     }
     pollDoctor(provider);
   } catch (error) {
@@ -698,6 +801,7 @@ async function runDoctorSession(provider) {
 async function pollDoctor(provider) {
   try {
     const status = await api('/doctor/status');
+    updateConversationControls(status);
     if (status.running) {
       provider = status.provider || provider;
       showOutput(status.outputSoFar || 'Doctor is working...');
@@ -712,6 +816,26 @@ async function pollDoctor(provider) {
     setTimeout(() => pollDoctor(provider), 5000);
   }
 }
+
+document.getElementById('doctor-composer').addEventListener('submit', async event => {
+  event.preventDefault();
+  const input = document.getElementById('doctor-message');
+  const message = input.value.trim();
+  if (!message) return;
+  const send = document.getElementById('doctor-send');
+  setButton(send, { disabled: true, label: 'Sending…', loading: true });
+  input.disabled = true;
+  try {
+    const result = await api('/doctor/message', 'POST', { message });
+    if (result.status === 'error') throw new Error(result.message);
+    input.value = '';
+    pollDoctor(result.provider);
+  } catch (error) {
+    showOutput(`${document.getElementById('output').textContent}\n\nError: ${error.message}`);
+    input.disabled = false;
+    setButton(send, { disabled: false, icon: 'ph-paper-plane-tilt', label: 'Send' });
+  }
+});
 
 const themeMedia = matchMedia('(prefers-color-scheme: dark)');
 
@@ -741,6 +865,7 @@ themeMedia.addEventListener?.('change', () => {
 
 applyTheme();
 refresh();
+pollDoctor(null);
 setInterval(refresh, 10000);
 </script>
 </body>

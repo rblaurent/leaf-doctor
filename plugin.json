@@ -1,7 +1,7 @@
 {
   "id": "doctor",
   "name": "Doctor",
-  "version": "1.1.1",
+  "version": "1.2.0",
   "kernelApi": "^0.1.0",
   "description": "Independent emergency recovery companion for the RedLeaf suite.",
   "icon": "ph-first-aid-kit",
@@ -21,6 +21,7 @@
     { "kind": "process", "target": "node", "reason": "Launch the detached Doctor runtime when no bundled runtime is available." },
     { "kind": "process", "target": "cloudflared", "reason": "Expose the recovery dashboard through the configured Cloudflare Tunnel." },
     { "kind": "process", "target": "claude", "reason": "Run unrestricted Claude Code recovery sessions when explicitly requested." },
-    { "kind": "process", "target": "codex", "reason": "Run unrestricted Codex recovery sessions when explicitly requested." }
+    { "kind": "process", "target": "codex", "reason": "Run unrestricted Codex recovery sessions when explicitly requested." },
+    { "kind": "os", "target": "issue-system-execution-token", "reason": "Mint a fresh short-lived signed identity for each explicitly requested Doctor turn." }
   ]
 }

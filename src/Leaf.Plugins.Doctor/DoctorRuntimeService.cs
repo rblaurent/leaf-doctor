@@ -11,6 +11,7 @@ public sealed class DoctorRuntimeService(
     string pluginDirectory,
     string pluginVersion,
     IEntityStore entities,
+    IExecutionTokens executionTokens,
     ILogger logger)
 {
     private static readonly HttpClient Http = new() { Timeout = TimeSpan.FromSeconds(4) };
@@ -91,6 +92,34 @@ public sealed class DoctorRuntimeService(
         var token = Secret();
         await ApplySettingsAsync(new JsonObject { ["access_token"] = token }, ct);
         return token;
+    }
+
+    public async Task<PluginExecutionToken> IssueExecutionTokenAsync(
+        string controlKey,
+        string sessionId,
+        string provider,
+        CancellationToken ct = default)
+    {
+        var config = await GetConfigAsync(ct);
+        if (!SecretEquals(controlKey, config.ControlKey))
+            throw new UnauthorizedAccessException("Doctor control authentication failed");
+        if (!Guid.TryParse(sessionId, out _))
+            throw new ArgumentException("sessionId must be a UUID", nameof(sessionId));
+        if (provider is not ("claude" or "codex"))
+            throw new ArgumentException("provider must be 'claude' or 'codex'", nameof(provider));
+
+        var providerLabel = provider == "codex" ? "Codex" : "Claude Code";
+        return executionTokens.IssueSystem(new PluginSystemExecutionTokenRequest(
+            "coding-agent",
+            $"doctor-{provider}",
+            $"{providerLabel} Doctor session",
+            "Emergency recovery explicitly requested from the authenticated Doctor dashboard.",
+            [new PluginExecutionContext(
+                "doctor-session",
+                sessionId,
+                Name: providerLabel,
+                Route: "/doctor")],
+            TimeSpan.FromMinutes(10)));
     }
 
     public async Task EnsureRunningAsync(CancellationToken ct = default)
@@ -536,6 +565,14 @@ public sealed class DoctorRuntimeService(
 
     private static string Secret()
         => Convert.ToHexStringLower(RandomNumberGenerator.GetBytes(32));
+
+    private static bool SecretEquals(string? actual, string? expected)
+    {
+        var left = System.Text.Encoding.UTF8.GetBytes(actual ?? "");
+        var right = System.Text.Encoding.UTF8.GetBytes(expected ?? "");
+        return left.Length == right.Length
+            && CryptographicOperations.FixedTimeEquals(left, right);
+    }
 
     private static string SafeSegment(string value)
         => string.Concat(value.Select(c => char.IsLetterOrDigit(c) || c is '.' or '-' or '_' ? c : '_'));

@@ -27,6 +27,7 @@ public sealed class DoctorPlugin : ILeafPlugin
             ctx.PluginDirectory,
             ctx.Manifest.Version ?? "workspace",
             sp.GetRequiredKeyedService<IEntityStore>(PluginId),
+            sp.GetRequiredKeyedService<IExecutionTokens>(PluginId),
             sp.GetRequiredService<ILoggerFactory>().CreateLogger("Leaf.Plugins.Doctor.Runtime")));
         services.AddSingleton<DoctorSettingsProvider>();
         services.AddSingleton<IPluginSettingsProvider>(sp =>

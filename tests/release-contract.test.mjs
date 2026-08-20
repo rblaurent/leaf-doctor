@@ -14,7 +14,7 @@ const input = readJson("release/producer-input.v1.json")
 const manifest = readJson("plugin.json")
 const packageJson = readJson("web/package.json")
 const runtimeLock = readJson("release/doctor-runtime-lock.v1.json")
-const centralRedLeafCommit = "4bf0894014b392e60cf0b5c6ca85920428ba7516"
+const centralRedLeafCommit = "82638404df0cb121a2799df6d126bd262c7be5bc"
 
 test("producer declares Doctor's protected detached-runtime contract exactly", () => {
   validateInput(input, manifest, packageJson, runtimeLock, root)
