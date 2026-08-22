@@ -41,6 +41,45 @@ function run(command, args, cwd) {
 }
 function git(root, ...args) { return run("git", ["-C", root, ...args]) }
 function cleanGit(root, label) { if (git(root, "status", "--porcelain=v1", "--untracked-files=all")) fail(`${label} checkout must be clean.`) }
+function doctorRuntimeRequirement(input) {
+  const values = input.runtimeRequirements.filter((item) => item.id === "doctor-runtime")
+  if (values.length !== 1) fail("Doctor runtime version field is missing or ambiguous.")
+  return values[0]
+}
+export function validateExactVersionOverride(head, current, expectedVersion) {
+  const headVersion = head.manifest.version
+  if (head.packageJson.version !== headVersion || head.runtimePackageJson.version !== headVersion
+      || doctorRuntimeRequirement(head.input).versionConstraint !== headVersion) fail("Committed Doctor version fields are inconsistent.")
+  if (expectedVersion === headVersion) fail("An ephemeral release override must change the committed version.")
+  if (current.manifest.version !== expectedVersion || current.packageJson.version !== expectedVersion
+      || current.runtimePackageJson.version !== expectedVersion
+      || doctorRuntimeRequirement(current.input).versionConstraint !== expectedVersion) fail("Ephemeral Doctor version fields must match the requested version.")
+  const restored = structuredClone(current)
+  restored.manifest.version = headVersion
+  restored.packageJson.version = headVersion
+  restored.runtimePackageJson.version = headVersion
+  doctorRuntimeRequirement(restored.input).versionConstraint = headVersion
+  if (canonical(restored.manifest) !== canonical(head.manifest)
+      || canonical(restored.input) !== canonical(head.input)
+      || canonical(restored.packageJson) !== canonical(head.packageJson)
+      || canonical(restored.runtimePackageJson) !== canonical(head.runtimePackageJson)) fail("Doctor checkout contains changes beyond the exact release version fields.")
+}
+function cleanDoctorGit(root, input, manifest, packageJson, runtimePackageJson) {
+  const status = git(root, "status", "--porcelain=v1", "--untracked-files=all")
+  if (!status) return
+  const expectedPaths = ["package.json", "plugin.json", "release/producer-input.v1.json", "web/package.json"]
+  const entries = status.split(/\r?\n/)
+  if (entries.length !== expectedPaths.length
+      || entries.some((entry) => !entry.startsWith(" M "))
+      || entries.map((entry) => entry.slice(3)).sort().some((path, index) => path !== expectedPaths[index])) fail("Doctor checkout must be clean except for the exact workflow-owned version fields.")
+  const atHead = (path) => JSON.parse(git(root, "show", `HEAD:${path}`))
+  validateExactVersionOverride({
+    manifest: atHead("plugin.json"),
+    input: atHead("release/producer-input.v1.json"),
+    packageJson: atHead("web/package.json"),
+    runtimePackageJson: atHead("package.json"),
+  }, { manifest, input, packageJson, runtimePackageJson }, manifest.version)
+}
 function hashFile(path) { return createHash("sha256").update(readFileSync(path)).digest("hex") }
 function facts(path) { return { sizeBytes: statSync(path).size, sha256: hashFile(path) } }
 function exactCommit(value, label) { if (!FULL_SHA.test(value)) fail(`${label} must be one full lowercase commit SHA.`) }
@@ -65,6 +104,7 @@ export function validateInput(input, manifest, packageJson, runtimeLock, reposit
   if (input.targetPlatform.operatingSystem !== "windows" || input.targetPlatform.architecture !== "x64") fail("Doctor release target must be windows/x64.")
   if (input.build.backendProject !== "src/Leaf.Plugins.Doctor/Leaf.Plugins.Doctor.csproj" || input.build.testProject !== "tests/Leaf.Plugins.Doctor.Tests/Leaf.Plugins.Doctor.Tests.csproj" || input.build.frontendDirectory !== "web") fail("Doctor build layout is invalid.")
   if (manifest.id !== "doctor" || manifest.version !== packageJson.version || manifest.kernelApi !== "^0.1.0" || manifest.backend?.assembly !== "Leaf.Plugins.Doctor" || manifest.frontend?.package !== packageJson.name) fail("Doctor manifest/package identity or layout drifted.")
+  if (json(resolve(repository, "package.json")).version !== manifest.version) fail("Doctor runtime package version drifted from the extension manifest.")
   if (manifest.build !== undefined || JSON.stringify(manifest.requires) !== JSON.stringify(["entities"])) fail("Doctor source manifest build evidence or kernel requirements drifted.")
   if (packageJson.name !== "@redbamboo/plugin-doctor" || packageJson.packageManager !== `pnpm@${input.toolchain.pnpm}` || packageJson.engines?.node !== input.toolchain.node) fail("Frontend identity or toolchain pins drifted.")
   if (input.toolchain.node !== runtimeLock.node.version) fail("Build Node and bundled runtime Node versions must agree.")
@@ -178,9 +218,10 @@ function collect(get) {
   const input = json(get("input"))
   const manifest = json(resolve(repository, "plugin.json"))
   const packageJson = json(resolve(repository, "web/package.json"))
+  const runtimePackageJson = json(resolve(repository, "package.json"))
   const runtimeLock = json(resolve(repository, input.runtime.lockPath))
   validateInput(input, manifest, packageJson, runtimeLock, repository, { resolved: true })
-  cleanGit(repository, "Doctor")
+  cleanDoctorGit(repository, input, manifest, packageJson, runtimePackageJson)
   cleanGit(redbamboo, "RedBamboo")
   cleanGit(leafSdk, "Leaf.Sdk")
   cleanGit(redleaf, "RedLeaf release tool")

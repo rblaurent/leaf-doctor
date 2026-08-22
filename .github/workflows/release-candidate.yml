@@ -2,11 +2,28 @@ name: Build and bridge Doctor unsigned candidate
 
 on:
   workflow_call:
+    inputs:
+      version:
+        description: Optional exact semantic version stamped into an automated candidate.
+        required: false
+        default: ''
+        type: string
+      source_commit:
+        description: Exact producer source commit supplied by trusted automation.
+        required: false
+        default: ''
+        type: string
     secrets:
       CROSS_REPO_TOKEN:
         description: Optional token that can read pinned RedLeaf and RedBamboo commits.
         required: false
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Optional exact semantic version; empty keeps the committed manifest version.
+        required: false
+        default: ''
+        type: string
 
 permissions: {}
 
@@ -19,15 +36,45 @@ jobs:
       contents: read
     outputs:
       handoff_artifact: ${{ steps.handoff.outputs.handoff_artifact }}
+      version: ${{ steps.pins.outputs.version }}
 
     steps:
       - name: Checkout exact Doctor source
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           repository: rblaurent/leaf-doctor
-          ref: ${{ github.workflow_sha }}
+          ref: ${{ inputs.source_commit || github.workflow_sha }}
           path: leaf-doctor
           persist-credentials: false
+
+      - name: Apply requested release version ephemerally
+        if: ${{ inputs.version != '' }}
+        working-directory: leaf-doctor
+        shell: pwsh
+        env:
+          REQUESTED_VERSION: ${{ inputs.version }}
+        run: |
+          if ($env:REQUESTED_VERSION -notmatch '^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$') {
+            throw 'Requested candidate version must be exact SemVer.'
+          }
+          $manifestPath = 'plugin.json'
+          $producerPath = 'release/producer-input.v1.json'
+          $runtimePackagePath = 'package.json'
+          $webPackagePath = 'web/package.json'
+          $manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
+          $producer = Get-Content -LiteralPath $producerPath -Raw | ConvertFrom-Json
+          $runtimePackage = Get-Content -LiteralPath $runtimePackagePath -Raw | ConvertFrom-Json
+          $webPackage = Get-Content -LiteralPath $webPackagePath -Raw | ConvertFrom-Json
+          $doctorRuntime = @($producer.runtimeRequirements | Where-Object { $_.id -ceq 'doctor-runtime' })
+          if ($doctorRuntime.Count -ne 1) { throw 'Doctor runtime version field is missing or ambiguous.' }
+          $manifest.version = $env:REQUESTED_VERSION
+          $runtimePackage.version = $env:REQUESTED_VERSION
+          $webPackage.version = $env:REQUESTED_VERSION
+          $doctorRuntime[0].versionConstraint = $env:REQUESTED_VERSION
+          $manifest | ConvertTo-Json -Depth 100 | Set-Content -LiteralPath $manifestPath -Encoding utf8NoBOM
+          $producer | ConvertTo-Json -Depth 100 | Set-Content -LiteralPath $producerPath -Encoding utf8NoBOM
+          $runtimePackage | ConvertTo-Json -Depth 100 | Set-Content -LiteralPath $runtimePackagePath -Encoding utf8NoBOM
+          $webPackage | ConvertTo-Json -Depth 100 | Set-Content -LiteralPath $webPackagePath -Encoding utf8NoBOM
 
       - name: Require immutable producer pins
         id: pins
@@ -36,6 +83,7 @@ jobs:
         run: |
           $input = Get-Content -LiteralPath 'release/producer-input.v1.json' -Raw | ConvertFrom-Json
           $runtime = Get-Content -LiteralPath $input.runtime.lockPath -Raw | ConvertFrom-Json
+          if ([string]::IsNullOrWhiteSpace('${{ inputs.source_commit }}') -and '${{ github.repository }}' -cne 'rblaurent/leaf-doctor') { throw 'Cross-repository callers must supply the exact canonical Doctor source commit.' }
           foreach ($pin in @($input.redleafReleaseToolCommit, $input.leafSdk.commit, $input.redbamboo.commit)) {
             if ([string]$pin -notmatch '^[a-f0-9]{40}$') { throw 'Every producer source and tool pin must be one full lowercase commit SHA.' }
           }
@@ -92,7 +140,7 @@ jobs:
           corepack enable
           corepack prepare pnpm@11.0.9 --activate
           if ((corepack pnpm --version).Trim() -cne '11.0.9') { throw 'Unexpected pnpm version.' }
-          if ((git -C leaf-doctor rev-parse HEAD).Trim() -cne '${{ github.workflow_sha }}') { throw 'Doctor checkout does not match github.workflow_sha.' }
+          if ((git -C leaf-doctor rev-parse HEAD).Trim() -cne '${{ inputs.source_commit || github.workflow_sha }}') { throw 'Doctor checkout does not match the called workflow commit.' }
           if ((git -C redbamboo-packages rev-parse HEAD).Trim() -cne '${{ steps.pins.outputs.redbamboo }}') { throw 'RedBamboo checkout mismatch.' }
           if ((git -C leaf-sdk rev-parse HEAD).Trim() -cne '${{ steps.pins.outputs.leaf_sdk }}') { throw 'Leaf.Sdk checkout mismatch.' }
           if ((git -C redleaf-release rev-parse HEAD).Trim() -cne '${{ steps.pins.outputs.redleaf }}') { throw 'RedLeaf release-tool checkout mismatch.' }
@@ -164,7 +212,7 @@ jobs:
             --redbamboo ../redbamboo-packages `
             --leaf-sdk ../leaf-sdk `
             --redleaf ../redleaf-release `
-            --source-commit '${{ github.workflow_sha }}' `
+            --source-commit '${{ inputs.source_commit || github.workflow_sha }}' `
             --source-date-epoch "$(git show -s --format=%ct HEAD)" `
             --output artifacts/doctor-release-metadata.v1.json
 
@@ -194,7 +242,7 @@ jobs:
               --redbamboo ../redbamboo-packages `
               --leaf-sdk ../leaf-sdk `
               --redleaf ../redleaf-release `
-              --source-commit '${{ github.workflow_sha }}' `
+              --source-commit '${{ inputs.source_commit || github.workflow_sha }}' `
               --source-date-epoch "$(git show -s --format=%ct HEAD)" `
               --metadata artifacts/doctor-release-metadata.v1.json `
               --descriptor "artifacts/$pass/doctor-${{ steps.pins.outputs.version }}.component-input.v1.json" `
@@ -220,7 +268,7 @@ jobs:
         id: handoff
         shell: pwsh
         run: |
-          "handoff_artifact=doctor-${{ steps.pins.outputs.version }}-${{ github.workflow_sha }}-unsigned-release-inputs" | Out-File $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          "handoff_artifact=doctor-${{ steps.pins.outputs.version }}-${{ inputs.source_commit || github.workflow_sha }}-unsigned-release-inputs" | Out-File $env:GITHUB_OUTPUT -Encoding utf8 -Append
 
       - name: Upload one unsigned channel-neutral handoff
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
@@ -240,7 +288,6 @@ jobs:
     needs: candidate
     runs-on: windows-2025
     timeout-minutes: 10
-    if: ${{ github.repository == 'rblaurent/leaf-doctor' }}
     concurrency:
       group: leaf-doctor-unsigned-candidates
       cancel-in-progress: false
@@ -257,7 +304,7 @@ jobs:
       - name: Append or prove the immutable unsigned candidate pair
         shell: pwsh
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ secrets.CROSS_REPO_TOKEN || github.token }}
         run: |
           $ErrorActionPreference = 'Stop'
           Set-StrictMode -Version Latest
@@ -293,7 +340,7 @@ jobs:
 
           $releaseJson = & gh release view $tag --repo $repository --json isDraft,isPrerelease,assets 2>$null
           if ($LASTEXITCODE -ne 0) {
-            & gh release create $tag --repo $repository --target '${{ github.workflow_sha }}' --prerelease --latest=false --title 'Leaf Doctor unsigned candidates' --notes 'Append-only unsigned candidate acquisition bridge.'
+            & gh release create $tag --repo $repository --target '${{ inputs.source_commit || github.workflow_sha }}' --prerelease --latest=false --title 'Leaf Doctor unsigned candidates' --notes 'Append-only unsigned candidate acquisition bridge.'
             if ($LASTEXITCODE -ne 0) { throw 'Unable to create the fixed unsigned-candidate release.' }
             $releaseJson = & gh release view $tag --repo $repository --json isDraft,isPrerelease,assets
             if ($LASTEXITCODE -ne 0) { throw 'Unable to read the fixed unsigned-candidate release.' }

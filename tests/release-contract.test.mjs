@@ -2,7 +2,7 @@ import assert from "node:assert/strict"
 import { readFileSync as readFileRaw } from "node:fs"
 import { resolve } from "node:path"
 import test from "node:test"
-import { buildMetadata, canonical, validateDescriptor, validateInput } from "../scripts/release/metadata.mjs"
+import { buildMetadata, canonical, validateDescriptor, validateExactVersionOverride, validateInput } from "../scripts/release/metadata.mjs"
 
 const root = resolve(import.meta.dirname, "..")
 const readFileSync = (path, encoding) => {
@@ -13,8 +13,36 @@ const readJson = (path) => JSON.parse(readFileSync(resolve(root, path), "utf8"))
 const input = readJson("release/producer-input.v1.json")
 const manifest = readJson("plugin.json")
 const packageJson = readJson("web/package.json")
+const runtimePackageJson = readJson("package.json")
 const runtimeLock = readJson("release/doctor-runtime-lock.v1.json")
 const centralRedLeafCommit = "82638404df0cb121a2799df6d126bd262c7be5bc"
+
+test("cross-repository bridge retains the scoped producer token", () => {
+  const workflow = readFileSync(resolve(root, ".github/workflows/release-candidate.yml"), "utf8")
+  assert.match(workflow, /GH_TOKEN: \$\{\{ secrets\.CROSS_REPO_TOKEN \|\| github\.token \}\}/)
+  assert.doesNotMatch(workflow, /GH_TOKEN: \$\{\{ github\.token \}\}/)
+})
+
+test("automated version overrides can change only the four Doctor version fields", () => {
+  const head = {
+    manifest: structuredClone(manifest),
+    input: structuredClone(input),
+    packageJson: structuredClone(packageJson),
+    runtimePackageJson: structuredClone(runtimePackageJson),
+  }
+  const current = structuredClone(head)
+  current.manifest.version = "1.2.1"
+  current.packageJson.version = "1.2.1"
+  current.runtimePackageJson.version = "1.2.1"
+  current.input.runtimeRequirements.find((item) => item.id === "doctor-runtime").versionConstraint = "1.2.1"
+  assert.doesNotThrow(() => validateExactVersionOverride(head, current, "1.2.1"))
+  current.manifest.description = "unexpected mutation"
+  assert.throws(() => validateExactVersionOverride(head, current, "1.2.1"), /beyond the exact release version fields/)
+  const inconsistent = structuredClone(head)
+  inconsistent.manifest.version = "1.2.1"
+  assert.throws(() => validateExactVersionOverride(head, inconsistent, "1.2.1"), /must match the requested version/)
+  assert.throws(() => validateExactVersionOverride(head, head, manifest.version), /must change the committed version/)
+})
 
 test("producer declares Doctor's protected detached-runtime contract exactly", () => {
   validateInput(input, manifest, packageJson, runtimeLock, root)
@@ -88,13 +116,16 @@ test("producer invokes the canonical stage, filter, produce, and ingest commands
 
 test("workflow is immutable, producer-scoped, and reproduces all four handoff files", () => {
   const workflow = readFileSync(resolve(root, ".github/workflows/release-candidate.yml"), "utf8")
-  assert.match(workflow, /ref: \$\{\{ github\.workflow_sha \}\}/)
-  assert.match(workflow, /source-commit '\$\{\{ github\.workflow_sha \}\}'/)
+  assert.match(workflow, /workflow_call:\n    inputs:/)
+  assert.match(workflow, /workflow_dispatch:\n    inputs:/)
+  assert.match(workflow, /ref: \$\{\{ inputs\.source_commit \|\| github\.workflow_sha \}\}/)
+  assert.match(workflow, /source-commit '\$\{\{ inputs\.source_commit \|\| github\.workflow_sha \}\}'/)
   assert.doesNotMatch(workflow, /uses: [^@\n]+@(main|master|v\d+)\s*$/m)
   assert.doesNotMatch(workflow, /artifact_url/)
   assert.doesNotMatch(workflow, /central_release_tag|CENTRAL_RELEASE_TAG/)
   assert.match(workflow, /repository: rblaurent\/leaf-doctor/)
-  assert.match(workflow, /github\.repository == 'rblaurent\/leaf-doctor'/)
+  assert.match(workflow, /Cross-repository callers must supply the exact canonical Doctor source commit/)
+  assert.doesNotMatch(workflow, /github\.repository == 'rblaurent\/leaf-doctor'/)
   assert.match(workflow, /repository: RedBamboo-Interactive\/redleaf/)
   assert.match(workflow, /repository: RedBamboo-Interactive\/redbamboo-packages/)
   assert.equal((workflow.match(/\.\/scripts\/release\/produce\.ps1/g) ?? []).length, 2)
@@ -118,7 +149,7 @@ test("serialized bridge appends only the exact immutable candidate pair", () => 
   assert.match(workflow, /candidateName = "\$candidateId\.candidate\.json"/)
   assert.match(workflow, /packageName = \[IO\.Path\]::GetFileName/)
   assert.match(workflow, /only one member of the immutable pair exists/)
-  assert.match(workflow, /gh release create \$tag --repo \$repository --target '\$\{\{ github\.workflow_sha \}\}' --prerelease --latest=false/)
+  assert.match(workflow, /gh release create \$tag --repo \$repository --target '\$\{\{ inputs\.source_commit \|\| github\.workflow_sha \}\}' --prerelease --latest=false/)
   assert.doesNotMatch(workflow, /visibility|already be public|public prerelease/i)
   assert.match(workflow, /gh release view \$tag --repo \$repository --json isDraft,isPrerelease,assets/)
   assert.match(workflow, /gh release upload \$tag --repo \$repository \$publishCandidate \$publishPackage/)
