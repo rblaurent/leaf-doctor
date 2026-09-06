@@ -15,6 +15,7 @@ const manifest = readJson("plugin.json")
 const packageJson = readJson("web/package.json")
 const runtimePackageJson = readJson("package.json")
 const runtimeLock = readJson("release/doctor-runtime-lock.v1.json")
+const dotnetSdk = readJson("global.json")
 const centralRedLeafCommit = "82638404df0cb121a2799df6d126bd262c7be5bc"
 
 test("cross-repository bridge retains the scoped producer token", () => {
@@ -58,6 +59,8 @@ test("producer declares Doctor's protected detached-runtime contract exactly", (
 })
 
 test("ReleaseTool and Leaf.Sdk use the audited immutable RedLeaf commit", () => {
+  assert.equal(dotnetSdk.sdk.version, input.toolchain.dotnetSdk)
+  assert.equal(dotnetSdk.sdk.rollForward, "disable")
   assert.equal(input.redleafReleaseToolCommit, centralRedLeafCommit)
   assert.equal(input.leafSdk.commit, centralRedLeafCommit)
   const malformed = structuredClone(input)
