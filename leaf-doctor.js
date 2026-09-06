@@ -45,7 +45,7 @@ function normalizeConfig(value) {
   return next;
 }
 
-let config = normalizeConfig(loadRuntimeConfig());
+let config = normalizeConfig(require.main === module ? loadRuntimeConfig() : {});
 let tunnelProc = null;
 let suppressTunnelRestart = false;
 
