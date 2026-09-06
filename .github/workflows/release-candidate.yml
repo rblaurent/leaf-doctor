@@ -309,7 +309,8 @@ jobs:
           if (-not (Test-Path -LiteralPath $candidate -PathType Leaf)) { throw "Required handoff file is missing: $candidate" }
           $candidateDocument = Get-Content -LiteralPath $candidate -Raw | ConvertFrom-Json
           if ([string]$candidateDocument.status -cne 'unsigned') { throw 'Candidate status must be unsigned.' }
-          if ($null -ne $candidateDocument.artifact.signature) { throw 'Unsigned candidate must not carry an artifact signature.' }
+          $signatureProperty = $candidateDocument.artifact.PSObject.Properties['signature']
+          if ($null -ne $signatureProperty -and $null -ne $signatureProperty.Value) { throw 'Unsigned candidate must not carry an artifact signature.' }
           $candidateId = [string]$candidateDocument.candidateId
           if ($candidateId -notmatch '^[a-z0-9][a-z0-9._-]{0,127}$') { throw 'Candidate ID is not a standard safe asset token.' }
           $version = [string]$candidateDocument.version
