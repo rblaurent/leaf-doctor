@@ -24,6 +24,7 @@ test("cross-repository bridge retains the scoped producer token", () => {
 })
 
 test("automated version overrides can change only the four Doctor version fields", () => {
+  const testVersion = manifest.version === "1.2.1" ? "1.2.2" : "1.2.1"
   const head = {
     manifest: structuredClone(manifest),
     input: structuredClone(input),
@@ -31,16 +32,16 @@ test("automated version overrides can change only the four Doctor version fields
     runtimePackageJson: structuredClone(runtimePackageJson),
   }
   const current = structuredClone(head)
-  current.manifest.version = "1.2.1"
-  current.packageJson.version = "1.2.1"
-  current.runtimePackageJson.version = "1.2.1"
-  current.input.runtimeRequirements.find((item) => item.id === "doctor-runtime").versionConstraint = "1.2.1"
-  assert.doesNotThrow(() => validateExactVersionOverride(head, current, "1.2.1"))
+  current.manifest.version = testVersion
+  current.packageJson.version = testVersion
+  current.runtimePackageJson.version = testVersion
+  current.input.runtimeRequirements.find((item) => item.id === "doctor-runtime").versionConstraint = testVersion
+  assert.doesNotThrow(() => validateExactVersionOverride(head, current, testVersion))
   current.manifest.description = "unexpected mutation"
-  assert.throws(() => validateExactVersionOverride(head, current, "1.2.1"), /beyond the exact release version fields/)
+  assert.throws(() => validateExactVersionOverride(head, current, testVersion), /beyond the exact release version fields/)
   const inconsistent = structuredClone(head)
-  inconsistent.manifest.version = "1.2.1"
-  assert.throws(() => validateExactVersionOverride(head, inconsistent, "1.2.1"), /must match the requested version/)
+  inconsistent.manifest.version = testVersion
+  assert.throws(() => validateExactVersionOverride(head, inconsistent, testVersion), /must match the requested version/)
   assert.throws(() => validateExactVersionOverride(head, head, manifest.version), /must change the committed version/)
 })
 
