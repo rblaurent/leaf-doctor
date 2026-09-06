@@ -262,7 +262,7 @@ jobs:
           }
           New-Item -ItemType Directory -Path artifacts/handoff | Out-Null
           foreach ($file in $files) { Copy-Item -LiteralPath "artifacts/pass-1/$file" -Destination artifacts/handoff }
-          $hashes | Set-Content -LiteralPath artifacts/reproducibility.sha256 -Encoding utf8NoBOM
+          $hashes | Set-Content -LiteralPath artifacts/handoff/reproducibility.sha256 -Encoding utf8NoBOM
 
       - name: Name one unsigned channel-neutral handoff
         id: handoff
@@ -274,12 +274,7 @@ jobs:
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: ${{ steps.handoff.outputs.handoff_artifact }}
-          path: |
-            leaf-doctor/artifacts/handoff/doctor-${{ steps.pins.outputs.version }}.leafpkg
-            leaf-doctor/artifacts/handoff/doctor-${{ steps.pins.outputs.version }}.component-input.v1.json
-            leaf-doctor/artifacts/handoff/doctor-candidate.unsigned.json
-            leaf-doctor/artifacts/handoff/doctor-signature-input.json
-            leaf-doctor/artifacts/reproducibility.sha256
+          path: leaf-doctor/artifacts/handoff/*
           if-no-files-found: error
           retention-days: 14
 
