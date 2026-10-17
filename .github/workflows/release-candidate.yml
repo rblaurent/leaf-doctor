@@ -35,7 +35,6 @@ jobs:
     permissions:
       contents: read
     outputs:
-      handoff_artifact: ${{ steps.handoff.outputs.handoff_artifact }}
       version: ${{ steps.pins.outputs.version }}
 
     steps:
@@ -264,19 +263,11 @@ jobs:
           foreach ($file in $files) { Copy-Item -LiteralPath "artifacts/pass-1/$file" -Destination artifacts/handoff }
           $hashes | Set-Content -LiteralPath artifacts/handoff/reproducibility.sha256 -Encoding utf8NoBOM
 
-      - name: Name one unsigned channel-neutral handoff
-        id: handoff
-        shell: pwsh
-        run: |
-          "handoff_artifact=doctor-${{ steps.pins.outputs.version }}-${{ inputs.source_commit || github.workflow_sha }}-unsigned-release-inputs" | Out-File $env:GITHUB_OUTPUT -Encoding utf8 -Append
-
-      - name: Upload one unsigned channel-neutral handoff
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      - name: Cache exact candidate inputs for the write-isolated bridge
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
-          name: ${{ steps.handoff.outputs.handoff_artifact }}
-          path: leaf-doctor/artifacts/handoff/*
-          if-no-files-found: error
-          retention-days: 14
+          path: leaf-doctor/artifacts/handoff/**
+          key: doctor-${{ steps.pins.outputs.version }}-${{ inputs.source_commit || github.workflow_sha }}-${{ github.run_id }}-${{ github.run_attempt }}-unsigned-release-inputs
 
   bridge:
     name: Append unsigned candidate to the fixed acquisition release
@@ -290,11 +281,12 @@ jobs:
       actions: read
       contents: write
     steps:
-      - name: Download the exact candidate handoff
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+      - name: Restore the exact candidate handoff
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
-          name: ${{ needs.candidate.outputs.handoff_artifact }}
-          path: bridge-input
+          path: leaf-doctor/artifacts/handoff/**
+          key: doctor-${{ needs.candidate.outputs.version }}-${{ inputs.source_commit || github.workflow_sha }}-${{ github.run_id }}-${{ github.run_attempt }}-unsigned-release-inputs
+          fail-on-cache-miss: true
 
       - name: Append or prove the immutable unsigned candidate pair
         shell: pwsh
@@ -305,7 +297,7 @@ jobs:
           Set-StrictMode -Version Latest
           $repository = 'rblaurent/leaf-doctor'
           $tag = 'leaf-doctor-unsigned-candidates'
-          $candidate = Join-Path $PWD 'bridge-input/doctor-candidate.unsigned.json'
+          $candidate = Join-Path $PWD 'leaf-doctor/artifacts/handoff/doctor-candidate.unsigned.json'
           if (-not (Test-Path -LiteralPath $candidate -PathType Leaf)) { throw "Required handoff file is missing: $candidate" }
           $candidateDocument = Get-Content -LiteralPath $candidate -Raw | ConvertFrom-Json
           if ([string]$candidateDocument.status -cne 'unsigned') { throw 'Candidate status must be unsigned.' }
@@ -315,7 +307,7 @@ jobs:
           if ($candidateId -notmatch '^[a-z0-9][a-z0-9._-]{0,127}$') { throw 'Candidate ID is not a standard safe asset token.' }
           $version = [string]$candidateDocument.version
           if ($version -notmatch '^[0-9A-Za-z][0-9A-Za-z._-]{0,127}$') { throw 'Candidate package version is invalid.' }
-          $package = Join-Path $PWD "bridge-input/doctor-$version.leafpkg"
+          $package = Join-Path $PWD "leaf-doctor/artifacts/handoff/doctor-$version.leafpkg"
           if (-not (Test-Path -LiteralPath $package -PathType Leaf)) { throw "Required handoff file is missing: $package" }
           $packageFacts = Get-Item -LiteralPath $package
           $packageHash = (Get-FileHash -LiteralPath $package -Algorithm SHA256).Hash.ToLowerInvariant()
