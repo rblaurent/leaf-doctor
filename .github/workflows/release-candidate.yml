@@ -268,11 +268,12 @@ jobs:
         with:
           path: leaf-doctor/artifacts/handoff/**
           key: doctor-${{ steps.pins.outputs.version }}-${{ inputs.source_commit || github.workflow_sha }}-${{ github.run_id }}-${{ github.run_attempt }}-unsigned-release-inputs
+          enableCrossOsArchive: true
 
   bridge:
     name: Append unsigned candidate to the fixed acquisition release
     needs: candidate
-    runs-on: windows-2025
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     concurrency:
       group: leaf-doctor-unsigned-candidates
@@ -287,6 +288,7 @@ jobs:
           path: leaf-doctor/artifacts/handoff/**
           key: doctor-${{ needs.candidate.outputs.version }}-${{ inputs.source_commit || github.workflow_sha }}-${{ github.run_id }}-${{ github.run_attempt }}-unsigned-release-inputs
           fail-on-cache-miss: true
+          enableCrossOsArchive: true
 
       - name: Append or prove the immutable unsigned candidate pair
         shell: pwsh

@@ -139,6 +139,9 @@ test("workflow is immutable, producer-scoped, and reproduces all four handoff fi
 
 test("serialized bridge appends only the exact immutable candidate pair", () => {
   const workflow = readFileSync(resolve(root, ".github/workflows/release-candidate.yml"), "utf8")
+  assert.equal((workflow.match(/runs-on: windows-2025/g) ?? []).length, 1)
+  assert.equal((workflow.match(/runs-on: ubuntu-24\.04/g) ?? []).length, 1)
+  assert.equal((workflow.match(/enableCrossOsArchive: true/g) ?? []).length, 2)
   assert.match(workflow, /permissions:\n\s+contents: read/)
   assert.match(workflow, /bridge:\n[\s\S]*?permissions:\n\s+actions: read\n\s+contents: write/)
   assert.match(workflow, /group: leaf-doctor-unsigned-candidates/)
