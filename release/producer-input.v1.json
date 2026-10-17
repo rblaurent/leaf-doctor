@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "inputType": "leaf-doctor-extension-release-producer-input",
   "classification": "protected",
-  "redleafReleaseToolCommit": "82638404df0cb121a2799df6d126bd262c7be5bc",
+  "redleafReleaseToolCommit": "4604a11ea2cb299a45fb0da8aa86dd0726164d50",
   "toolchain": {
     "node": "22.23.1",
     "pnpm": "11.0.9",
@@ -11,12 +11,12 @@
   },
   "leafSdk": {
     "repository": "RedBamboo-Interactive/redleaf",
-    "commit": "82638404df0cb121a2799df6d126bd262c7be5bc",
+    "commit": "4604a11ea2cb299a45fb0da8aa86dd0726164d50",
     "sourcePath": "src/Leaf.Sdk"
   },
   "redbamboo": {
     "repository": "RedBamboo-Interactive/redbamboo-packages",
-    "commit": "ea68aa5e3718a54837ba024855f7434497b9c61a",
+    "commit": "0ddcd7fea92913411fe58454c4968558ad596611",
     "lockPath": "pnpm-lock.yaml",
     "inputs": [
       {

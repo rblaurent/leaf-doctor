@@ -16,7 +16,7 @@ const packageJson = readJson("web/package.json")
 const runtimePackageJson = readJson("package.json")
 const runtimeLock = readJson("release/doctor-runtime-lock.v1.json")
 const dotnetSdk = readJson("global.json")
-const centralRedLeafCommit = "82638404df0cb121a2799df6d126bd262c7be5bc"
+const centralRedLeafCommit = "4604a11ea2cb299a45fb0da8aa86dd0726164d50"
 
 test("cross-repository bridge retains the scoped producer token", () => {
   const workflow = readFileSync(resolve(root, ".github/workflows/release-candidate.yml"), "utf8")
