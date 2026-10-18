@@ -16,7 +16,7 @@ const packageJson = readJson("web/package.json")
 const runtimePackageJson = readJson("package.json")
 const runtimeLock = readJson("release/doctor-runtime-lock.v1.json")
 const dotnetSdk = readJson("global.json")
-const centralRedLeafCommit = "4604a11ea2cb299a45fb0da8aa86dd0726164d50"
+const centralRedLeafCommit = "21e6fd3914bd97e858f945ad8fec103c684496a9"
 
 test("cross-repository bridge retains the scoped producer token", () => {
   const workflow = readFileSync(resolve(root, ".github/workflows/release-candidate.yml"), "utf8")
@@ -52,7 +52,7 @@ test("producer declares Doctor's protected detached-runtime contract exactly", (
   assert.deepEqual(input.dependencies, [])
   assert.equal(input.leafSdk.repository, "RedBamboo-Interactive/redleaf")
   assert.equal(input.redbamboo.repository, "RedBamboo-Interactive/redbamboo-packages")
-  assert.equal(input.redbamboo.commit, "5c238b3dff413a5448285ba4aa65e66a4dce634a")
+  assert.equal(input.redbamboo.commit, "de5ec053440ebd6d4636e8287f493ce5e62a06f5")
   assert.deepEqual(input.redbamboo.inputs.map((item) => item.name), ["@redbamboo/ui", "@redbamboo/utility"])
   assert.deepEqual(input.runtimeRequirements.map((item) => item.id), ["claude-code", "cloudflared", "codex", "doctor-runtime", "node"])
   assert.match(input.runtimeRequirements.find((item) => item.id === "doctor-runtime").interface, /GET \/health/)
