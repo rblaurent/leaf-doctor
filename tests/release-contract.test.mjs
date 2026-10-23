@@ -52,7 +52,7 @@ test("producer declares Doctor's protected detached-runtime contract exactly", (
   assert.deepEqual(input.dependencies, [])
   assert.equal(input.leafSdk.repository, "RedBamboo-Interactive/redleaf")
   assert.equal(input.redbamboo.repository, "RedBamboo-Interactive/redbamboo-packages")
-  assert.equal(input.redbamboo.commit, "d9927dbdf005e1202df3cf97fc3695be3a4c733a")
+  assert.equal(input.redbamboo.commit, "c3eb5ea34d269ec079d1e4c8365e966d8cb9abab")
   assert.deepEqual(input.redbamboo.inputs.map((item) => item.name), ["@redbamboo/ui", "@redbamboo/utility"])
   assert.deepEqual(input.runtimeRequirements.map((item) => item.id), ["claude-code", "cloudflared", "codex", "doctor-runtime", "node"])
   assert.match(input.runtimeRequirements.find((item) => item.id === "doctor-runtime").interface, /GET \/health/)

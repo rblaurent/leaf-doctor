@@ -1,5 +1,6 @@
 import assert from "node:assert/strict"
 import { after, before, test } from "node:test"
+import { readFileSync } from "node:fs"
 import { fileURLToPath } from "node:url"
 import { createElement } from "react"
 import { renderToStaticMarkup } from "react-dom/server"
@@ -63,7 +64,6 @@ test("a rotated token is revealed inside the access-token field itself", () => {
   // Field card, then the revealed value, then the card's action bar with Copy and Rotate.
   const field = access.indexOf('data-slot="protected-value-field"')
   const value = access.indexOf(TOKEN)
-  assert.match(access, new RegExp(`<code[^>]*data-slot="protected-value-revealed-value"[^>]*>${TOKEN}</code>`))
   const copy = access.indexOf('data-slot="protected-value-copy"')
   const rotate = access.indexOf(">Rotate<")
   assert.ok(field >= 0 && field < value && value < copy && copy < rotate, "value and Copy sit inside the field card")
@@ -73,19 +73,24 @@ test("a rotated token is revealed inside the access-token field itself", () => {
   assert.doesNotMatch(html, /doctor-rotated-token|doctor-settings__token/, "no separate token box")
 })
 
-test("the revealed token is a focusable, labelled group with a short one-time notice", () => {
+test("the revealed token is the design-system Input, labelled, focusable, with a short notice", () => {
   const { access } = sectionsOf(render(TOKEN))
-  const group = access.match(/<div[^>]*data-slot="protected-value-revealed"[^>]*>/)?.[0]
-  assert.ok(group)
-  assert.match(group, /role="group"/)
-  assert.match(group, /aria-label="New token"/)
-  assert.match(group, /tabindex="-1"/)
-  const noticeId = group.match(/aria-describedby="([^"]+)"/)?.[1]
+  const input = access.match(/<input[^>]*data-slot="protected-value-revealed-value"[^>]*>/)?.[0]
+  assert.ok(input)
+  assert.match(input, /readOnly=""/)
+  assert.match(input, /aria-label="New token"/)
+  assert.match(input, new RegExp(`value="${TOKEN}"`))
+  const noticeId = input.match(/aria-describedby="([^"]+)"/)?.[1]
   assert.ok(noticeId)
   assert.match(access, new RegExp(`id="${noticeId}"[^>]*>Shown only once\\. Copy it now\\.<`))
-  assert.match(access, /<button[^>]*data-slot="protected-value-copy"[^>]*>Copy token<\/button>/)
+  assert.match(access, /<button[^>]*data-slot="protected-value-copy"[^>]*>.*Copy token<\/button>/)
   assert.doesNotMatch(access, /\b(below|above)\b/i, "wording must not depend on layout direction")
-  assert.doesNotMatch(access, /shown only once:/, "capable hosts do not render the plain-text fallback")
+  assert.doesNotMatch(access, />New access token</, "capable hosts do not render the fallback row")
+})
+
+test("the panel ships no bespoke token styling", () => {
+  const css = readFileSync(new URL("../src/style.css", import.meta.url), "utf8")
+  assert.doesNotMatch(css, /token|rotation|reveal/i)
 })
 
 test("nothing is revealed before a rotation", () => {

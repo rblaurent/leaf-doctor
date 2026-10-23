@@ -42,7 +42,7 @@ type Descriptor = { status: RuntimeStatus; sections: Section[] }
 type RotationToast = { title: string; description?: string; variant: "success" | "error" }
 
 // The shell supplies @redbamboo/ui. Hosts built before ProtectedValueField could reveal a
-// value ignore `revealedValue`, so the token is then shown as plain text under the field.
+// value ignore `revealedValue`, so the token is then shown in a read-only row under the field.
 const fieldRevealsValue = UI_COMPONENT_CATALOG.some((component) =>
   component.id === "protected-value-field" && component.variants.includes("revealed-value"))
 
@@ -266,10 +266,9 @@ function FieldControl({
           revealedValue={revealedValue || null}
         />
       </SettingRow>
-      {revealedValue && !fieldRevealsValue && <p role="status" className="mb-3 text-xs">
-        New access token, shown only once:{" "}
-        <code className="select-all break-all font-mono">{revealedValue}</code>
-      </p>}
+      {revealedValue && !fieldRevealsValue && <SettingRow label="New access token" hint="Shown only once. Copy it now.">
+        <Input readOnly value={revealedValue} className="font-mono text-xs" onFocus={(event) => event.currentTarget.select()} />
+      </SettingRow>}
     </>
   }
 
