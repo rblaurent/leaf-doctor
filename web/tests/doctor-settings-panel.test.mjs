@@ -44,8 +44,8 @@ before(async () => {
 after(async () => { await server?.close() })
 
 const noop = async () => {}
-const render = (rotation) => renderToStaticMarkup(
-  createElement(panel.DoctorSections, { sections, rotation, onSave: noop, onRotate: noop }))
+const render = (rotatedToken) => renderToStaticMarkup(
+  createElement(panel.DoctorSections, { sections, rotatedToken, onSave: noop, onRotate: noop }))
 
 /** Splits markup into the slices owned by each settings section. */
 function sectionsOf(html) {
@@ -54,45 +54,92 @@ function sectionsOf(html) {
   return result
 }
 
-test("a rotated token renders inline in the Access section, after the Rotate control", () => {
-  const html = render({ token: TOKEN, error: "" })
+test("a rotated token is revealed inside the access-token field itself", () => {
+  const html = render(TOKEN)
   const { runtime, access, tunnel } = sectionsOf(html)
   assert.equal(html.split(TOKEN).length - 1, 1, "token is rendered exactly once")
-  assert.ok(access.includes(TOKEN), "token lives in the Access section")
   assert.ok(!runtime.includes(TOKEN) && !tunnel.includes(TOKEN))
 
+  // Field card, then the revealed value, then the card's action bar with Copy and Rotate.
   const field = access.indexOf('data-slot="protected-value-field"')
-  const rotateButton = access.indexOf(">Rotate<")
-  const result = access.indexOf('data-slot="doctor-rotated-token"')
-  assert.ok(field >= 0 && rotateButton > field, "access field exposes Rotate")
-  assert.ok(result > rotateButton, "result follows the Rotate button")
-  assert.equal(access.match(/data-slot="protected-value-field"/g).length, 1, "no other field between Rotate and the result")
+  const value = access.indexOf(TOKEN)
+  assert.match(access, new RegExp(`<code[^>]*data-slot="protected-value-revealed-value"[^>]*>${TOKEN}</code>`))
+  const copy = access.indexOf('data-slot="protected-value-copy"')
+  const rotate = access.indexOf(">Rotate<")
+  assert.ok(field >= 0 && field < value && value < copy && copy < rotate, "value and Copy sit inside the field card")
+  assert.match(access.slice(field, value), /data-revealed="true"/)
+  assert.equal(access.match(/data-slot="protected-value-field"/g).length, 1)
+  assert.doesNotMatch(tunnel, /data-revealed/, "the tunnel token field is not revealed")
+  assert.doesNotMatch(html, /doctor-rotated-token|doctor-settings__token/, "no separate token box")
 })
 
-test("the rotated token is a focusable, labelled region with a Copy action and position-neutral wording", () => {
-  const html = renderToStaticMarkup(createElement(panel.RotationResult, { token: TOKEN, error: "" }))
-  assert.match(html, /role="region"/)
-  assert.match(html, /tabindex="-1"/)
-  assert.match(html, /aria-labelledby="[^"]+"/)
-  assert.match(html, /aria-describedby="[^"]+"/)
-  assert.match(html, /<button[^>]*>Copy token<\/button>/)
-  assert.match(html, /New access token/)
-  assert.match(html, /Shown only once/)
-  assert.doesNotMatch(html, /\b(below|above)\b/i, "wording must not depend on layout direction")
+test("the revealed token is a focusable, labelled group with a short one-time notice", () => {
+  const { access } = sectionsOf(render(TOKEN))
+  const group = access.match(/<div[^>]*data-slot="protected-value-revealed"[^>]*>/)?.[0]
+  assert.ok(group)
+  assert.match(group, /role="group"/)
+  assert.match(group, /aria-label="New token"/)
+  assert.match(group, /tabindex="-1"/)
+  const noticeId = group.match(/aria-describedby="([^"]+)"/)?.[1]
+  assert.ok(noticeId)
+  assert.match(access, new RegExp(`id="${noticeId}"[^>]*>Shown only once\\. Copy it now\\.<`))
+  assert.match(access, /<button[^>]*data-slot="protected-value-copy"[^>]*>Copy token<\/button>/)
+  assert.doesNotMatch(access, /\b(below|above)\b/i, "wording must not depend on layout direction")
+  assert.doesNotMatch(access, /shown only once:/, "capable hosts do not render the plain-text fallback")
 })
 
-test("a rotation error renders in the Access section as an alert instead of a token", () => {
-  const html = render({ token: "", error: "Doctor rejected the rotation" })
-  const { runtime, access } = sectionsOf(html)
-  assert.ok(access.includes("Doctor rejected the rotation"))
-  assert.ok(!runtime.includes("Doctor rejected the rotation"))
-  assert.match(access, /<p role="alert"[^>]*>Doctor rejected the rotation<\/p>/)
-  assert.ok(access.indexOf('data-slot="doctor-rotation-error"') > access.indexOf(">Rotate<"))
-  assert.doesNotMatch(html, /doctor-rotated-token/)
-})
-
-test("nothing is rendered beside the field before a rotation", () => {
-  const html = render({ token: "", error: "" })
-  assert.doesNotMatch(html, /doctor-rotated-token|doctor-rotation-error/)
+test("nothing is revealed before a rotation", () => {
+  const html = render("")
+  assert.doesNotMatch(html, /data-revealed|protected-value-revealed|protected-value-copy/)
   assert.ok(sectionsOf(html).access.includes(">Rotate<"))
+})
+
+function harness({ rotate = async () => TOKEN, copy = async () => {} } = {}) {
+  const calls = []
+  return {
+    calls,
+    effects: {
+      rotate: async () => { calls.push("rotate"); return rotate() },
+      reveal: (token) => calls.push(["reveal", token]),
+      copy: async (token) => { calls.push(["copy", token]); return copy(token) },
+      toast: (toast) => calls.push(["toast", toast]),
+    },
+  }
+}
+
+test("a successful rotation reveals the token, copies it, and confirms with a toast", async () => {
+  const { calls, effects } = harness()
+  await panel.rotateAccessToken(effects)
+  assert.deepEqual(calls, [
+    "rotate",
+    ["reveal", TOKEN],
+    ["copy", TOKEN],
+    ["toast", { title: "New access token copied to clipboard", variant: "success" }],
+  ])
+})
+
+test("a failed automatic copy keeps the token revealed and says so in a toast", async () => {
+  const { calls, effects } = harness({ copy: async () => { throw new DOMException("Document is not focused.", "NotAllowedError") } })
+  await panel.rotateAccessToken(effects)
+  assert.deepEqual(calls.slice(0, 3), ["rotate", ["reveal", TOKEN], ["copy", TOKEN]])
+  const [, toast] = calls[3]
+  assert.equal(toast.variant, "error")
+  assert.equal(toast.title, "Could not copy the new access token")
+  assert.match(toast.description, /shown in the Access Token field/)
+  assert.ok(!JSON.stringify(toast).includes(TOKEN), "the token never appears in a toast")
+})
+
+test("a missing clipboard API is treated as a failed copy, not a failed rotation", async () => {
+  const { calls, effects } = harness({ copy: async () => undefined.writeText(TOKEN) })
+  await panel.rotateAccessToken(effects)
+  assert.equal(calls.at(-1)[1].title, "Could not copy the new access token")
+})
+
+test("a failed rotation toasts and rethrows so the field shows the error inline", async () => {
+  const { calls, effects } = harness({ rotate: async () => { throw new Error("Doctor rejected the rotation") } })
+  await assert.rejects(panel.rotateAccessToken(effects), { message: "Doctor rejected the rotation" })
+  assert.deepEqual(calls, [
+    "rotate",
+    ["toast", { title: "Could not rotate the access token", description: "Doctor rejected the rotation", variant: "error" }],
+  ])
 })

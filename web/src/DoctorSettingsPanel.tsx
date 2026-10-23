@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useId, useRef, useState } from "react"
+import { useCallback, useEffect, useState } from "react"
 import {
   Button,
   Input,
@@ -6,6 +6,8 @@ import {
   SectionHeader,
   SettingRow,
   Switch,
+  UI_COMPONENT_CATALOG,
+  useToast,
   type ProtectedValueProtection,
   type ProtectedValueVerification,
 } from "@redbamboo/ui"
@@ -37,7 +39,44 @@ type Field = {
 
 type Section = { id: string; label: string; fields: Field[] }
 type Descriptor = { status: RuntimeStatus; sections: Section[] }
-type Rotation = { token: string; error: string }
+type RotationToast = { title: string; description?: string; variant: "success" | "error" }
+
+// The shell supplies @redbamboo/ui. Hosts built before ProtectedValueField could reveal a
+// value ignore `revealedValue`, so the token is then shown as plain text under the field.
+const fieldRevealsValue = UI_COMPONENT_CATALOG.some((component) =>
+  component.id === "protected-value-field" && component.variants.includes("revealed-value"))
+
+/**
+ * Rotates the access token, reveals it in the field, then tries to copy it. Copy results
+ * are reported as toasts; a failed rotation toasts and rethrows so the field shows the
+ * error inline. The token is only handed to `reveal` and `copy`, never logged or stored.
+ */
+export async function rotateAccessToken({ rotate, reveal, copy, toast }: {
+  rotate: () => Promise<string>
+  reveal: (token: string) => void
+  copy: (token: string) => Promise<void>
+  toast: (toast: RotationToast) => void
+}) {
+  let token: string
+  try {
+    token = await rotate()
+  } catch (cause) {
+    const message = cause instanceof Error ? cause.message : "Could not rotate the access token"
+    toast({ title: "Could not rotate the access token", description: message, variant: "error" })
+    throw new Error(message)
+  }
+  reveal(token)
+  try {
+    await copy(token)
+    toast({ title: "New access token copied to clipboard", variant: "success" })
+  } catch {
+    toast({
+      title: "Could not copy the new access token",
+      description: "It is shown in the Access Token field. Copy it from there.",
+      variant: "error",
+    })
+  }
+}
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`${BASE}${path}`, {
@@ -54,8 +93,9 @@ export function DoctorSettingsPanel() {
   const [descriptor, setDescriptor] = useState<Descriptor | null>(null)
   const [notice, setNotice] = useState<string>("")
   const [error, setError] = useState<string>("")
-  const [rotation, setRotation] = useState<Rotation>({ token: "", error: "" })
+  const [rotatedToken, setRotatedToken] = useState("")
   const [busy, setBusy] = useState(false)
+  const { toast } = useToast()
 
   const reload = useCallback(async () => {
     try {
@@ -100,18 +140,20 @@ export function DoctorSettingsPanel() {
 
   const rotate = async () => {
     if (!confirm("Rotate the Doctor access token? Existing bookmarked sessions will stop working.")) return
-    // The result renders beside the Rotate button, so the panel-level notice stays quiet.
+    // The result appears in the access-token field, so the panel-level notice stays quiet.
     // A failed rotation also hides any earlier token: it may no longer be the active one.
-    setBusy(true); setNotice(""); setError(""); setRotation({ token: "", error: "" })
+    setBusy(true); setNotice(""); setError(""); setRotatedToken("")
     try {
-      const result = await request<{ token: string }>("/settings", {
-        method: "PUT",
-        body: JSON.stringify({ section: "access", values: { rotate_access_token: true } }),
+      await rotateAccessToken({
+        rotate: async () => (await request<{ token: string }>("/settings", {
+          method: "PUT",
+          body: JSON.stringify({ section: "access", values: { rotate_access_token: true } }),
+        })).token,
+        reveal: setRotatedToken,
+        copy: (token) => navigator.clipboard.writeText(token),
+        toast,
       })
       await reload()
-      setRotation({ token: result.token, error: "" })
-    } catch (cause) {
-      setRotation({ token: "", error: cause instanceof Error ? cause.message : "Could not rotate the access token" })
     } finally { setBusy(false) }
   }
 
@@ -142,18 +184,18 @@ export function DoctorSettingsPanel() {
       {error || notice}
     </p>
 
-    {descriptor && <DoctorSections sections={descriptor.sections} rotation={rotation} onSave={save} onRotate={rotate} />}
+    {descriptor && <DoctorSections sections={descriptor.sections} rotatedToken={rotatedToken} onSave={save} onRotate={rotate} />}
   </div>
 }
 
 export function DoctorSections({
   sections,
-  rotation,
+  rotatedToken,
   onSave,
   onRotate,
 }: {
   sections: Section[]
-  rotation: Rotation
+  rotatedToken: string
   onSave: (section: string, key: string, value: unknown) => Promise<void>
   onRotate: () => Promise<void>
 }) {
@@ -168,80 +210,10 @@ export function DoctorSections({
             field={field}
             onSave={onSave}
             onRotate={field.key === "access_token" ? onRotate : undefined}
-            rotation={field.key === "access_token" ? rotation : undefined}
+            revealedValue={field.key === "access_token" ? rotatedToken : undefined}
           />)}
     </section>)}
   </>
-}
-
-/**
- * Shows the outcome of a rotation directly under the access-token field. The token is
- * displayed once, held only in component state, and never logged or persisted; on
- * success the result is scrolled into view and focused so it is not missed on a phone.
- */
-export function RotationResult({ token, error }: Rotation) {
-  const containerRef = useRef<HTMLDivElement>(null)
-  const valueRef = useRef<HTMLElement>(null)
-  const [copy, setCopy] = useState<"idle" | "copied" | "manual">("idle")
-  const titleId = useId()
-  const warningId = useId()
-
-  useEffect(() => { setCopy("idle") }, [token])
-
-  useEffect(() => {
-    const node = containerRef.current
-    if (!node || (!token && !error)) return
-    if (token) node.focus({ preventScroll: true })
-    const reduceMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches
-    node.scrollIntoView({ block: "nearest", behavior: reduceMotion ? "auto" : "smooth" })
-  }, [token, error])
-
-  const copyToken = async () => {
-    try {
-      await navigator.clipboard.writeText(token)
-      setCopy("copied")
-    } catch {
-      // Clipboard access is unavailable on insecure origins and some mobile browsers:
-      // select the value so it can be copied by hand.
-      const selection = window.getSelection()
-      if (valueRef.current && selection) {
-        const range = document.createRange()
-        range.selectNodeContents(valueRef.current)
-        selection.removeAllRanges()
-        selection.addRange(range)
-      }
-      setCopy("manual")
-    }
-  }
-
-  if (error) {
-    return <div ref={containerRef} className="doctor-settings__rotation" data-slot="doctor-rotation-error">
-      <p role="alert" className="text-xs text-accent-red">{error}</p>
-    </div>
-  }
-  if (!token) return null
-
-  return <div
-    ref={containerRef}
-    className="doctor-settings__rotation doctor-settings__token"
-    data-slot="doctor-rotated-token"
-    role="region"
-    aria-labelledby={titleId}
-    aria-describedby={warningId}
-    tabIndex={-1}
-  >
-    <strong id={titleId} className="doctor-settings__token-title">New access token</strong>
-    <p id={warningId} className="doctor-settings__token-warning">
-      Shown only once. Copy it now: it cannot be shown again once you close or leave this panel.
-    </p>
-    <code ref={valueRef} className="doctor-settings__token-value">{token}</code>
-    <div className="doctor-settings__controls">
-      <Button size="sm" onClick={() => void copyToken()}>Copy token</Button>
-      <span role="status" className="text-xs text-text-muted">
-        {copy === "copied" ? "Copied to clipboard." : copy === "manual" ? "Copy is blocked here. The token is selected; copy it manually." : ""}
-      </span>
-    </div>
-  </div>
 }
 
 function Metric({ label, value }: { label: string; value: string }) {
@@ -253,13 +225,13 @@ function FieldControl({
   field,
   onSave,
   onRotate,
-  rotation,
+  revealedValue,
 }: {
   section: string
   field: Field
   onSave: (section: string, key: string, value: unknown) => Promise<void>
   onRotate?: () => Promise<void>
-  rotation?: Rotation
+  revealedValue?: string
 }) {
   const [draft, setDraft] = useState("")
   useEffect(() => {
@@ -291,9 +263,13 @@ function FieldControl({
             ? () => onSave(section, field.key, null)
             : undefined}
           allowClear={field.key === "tunnel_token"}
+          revealedValue={revealedValue || null}
         />
       </SettingRow>
-      {rotation && <RotationResult token={rotation.token} error={rotation.error} />}
+      {revealedValue && !fieldRevealsValue && <p role="status" className="mb-3 text-xs">
+        New access token, shown only once:{" "}
+        <code className="select-all break-all font-mono">{revealedValue}</code>
+      </p>}
     </>
   }
 
