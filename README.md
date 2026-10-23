@@ -29,7 +29,7 @@ instead verifies and embeds the locked official runtime bytes.
 
 `.github/workflows/release-candidate.yml` is the unsigned acquisition producer; the script
 above remains a developer convenience. The workflow checks out Doctor at
-`github.workflow_sha`, uses locked NuGet and pnpm graphs, verifies the exact Node 22.23.1
+`github.workflow_sha`, uses locked NuGet and pnpm graphs, verifies the exact Node 22.23.4
 Windows x64 archive and executable from `release/doctor-runtime-lock.v1.json`, and
 runs RedLeaf's canonical manifest stage, backend filter, package producer, and
 extension ingestor. Two isolated passes must produce identical `.leafpkg`, component

@@ -4,7 +4,7 @@
   "classification": "protected",
   "redleafReleaseToolCommit": "21e6fd393196fbe2179293ff3f05cb3501ebeaed",
   "toolchain": {
-    "node": "22.23.1",
+    "node": "22.23.4",
     "pnpm": "11.0.9",
     "dotnetSdk": "9.0.303",
     "msbuild": "17.14.13.31314"
@@ -122,10 +122,10 @@
       "id": "node",
       "management": "managedByExtension",
       "requirement": "required",
-      "versionConstraint": "22.23.1",
+      "versionConstraint": "22.23.4",
       "interface": "bundled Windows x64 node.exe executes leaf-doctor.js --config-stdin",
       "sourceMarkers": [
-        "release/doctor-runtime-lock.v1.json#node-v22.23.1-win-x64.zip",
+        "release/doctor-runtime-lock.v1.json#node-v22.23.4-win-x64.zip",
         "src/Leaf.Plugins.Doctor/DoctorRuntimeService.cs#node.exe"
       ]
     }

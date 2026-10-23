@@ -56,7 +56,7 @@ test("producer declares Doctor's protected detached-runtime contract exactly", (
   assert.deepEqual(input.redbamboo.inputs.map((item) => item.name), ["@redbamboo/ui", "@redbamboo/utility"])
   assert.deepEqual(input.runtimeRequirements.map((item) => item.id), ["claude-code", "cloudflared", "codex", "doctor-runtime", "node"])
   assert.match(input.runtimeRequirements.find((item) => item.id === "doctor-runtime").interface, /GET \/health/)
-  assert.equal(runtimeLock.node.executable.sha256, "f8d162c0641dcee512132f3bcf8a68169c7ecb852efd8e1a46c9fec5a0f469ed")
+  assert.equal(runtimeLock.node.executable.sha256, "dccc52de28d8df2ee22d2062424f8c563070d95d8ad70c54c4bf01d590dec14f")
 })
 
 test("ReleaseTool and Leaf.Sdk use the audited immutable RedLeaf commit", () => {

@@ -132,8 +132,8 @@ function validateRuntimeLock(lock) {
   exactKeys(lock.node, ["archive", "executable", "platform", "version"], "runtime lock node")
   exactKeys(lock.node.archive, ["fileName", "sha256", "url"], "runtime lock archive")
   exactKeys(lock.node.executable, ["path", "sha256"], "runtime lock executable")
-  if (lock.schemaVersion !== 1 || lock.lockType !== "leaf-doctor-runtime-lock" || lock.node.version !== "22.23.1" || lock.node.platform !== "win-x64") fail("Unsupported Doctor runtime lock.")
-  if (lock.node.archive.fileName !== "node-v22.23.1-win-x64.zip" || lock.node.archive.url !== "https://nodejs.org/dist/v22.23.1/node-v22.23.1-win-x64.zip") fail("Node runtime archive identity drifted.")
+  if (lock.schemaVersion !== 1 || lock.lockType !== "leaf-doctor-runtime-lock" || lock.node.version !== "22.23.4" || lock.node.platform !== "win-x64") fail("Unsupported Doctor runtime lock.")
+  if (lock.node.archive.fileName !== "node-v22.23.4-win-x64.zip" || lock.node.archive.url !== "https://nodejs.org/dist/v22.23.4/node-v22.23.4-win-x64.zip") fail("Node runtime archive identity drifted.")
   for (const hash of [lock.node.archive.sha256, lock.node.executable.sha256]) if (!/^[a-f0-9]{64}$/.test(hash)) fail("Runtime lock hashes must be exact lowercase SHA-256 values.")
 }
 
@@ -155,7 +155,7 @@ function validateRuntimeRequirements(values, version, repository) {
   const doctor = values.find((item) => item.id === "doctor-runtime")
   if (doctor.management !== "managedByExtension" || doctor.requirement !== "required" || doctor.versionConstraint !== version || !doctor.interface.includes("GET /health")) fail("Detached Doctor health/lifecycle contract drifted.")
   const node = values.find((item) => item.id === "node")
-  if (node.management !== "managedByExtension" || node.requirement !== "required" || node.versionConstraint !== "22.23.1") fail("Bundled Node runtime contract drifted.")
+  if (node.management !== "managedByExtension" || node.requirement !== "required" || node.versionConstraint !== "22.23.4") fail("Bundled Node runtime contract drifted.")
 }
 
 export function buildMetadata(input, manifest, source) {
