@@ -1,0 +1,114 @@
+{
+  "schema": "leaf.extension-guide/1",
+  "id": "doctor",
+  "kind": "companion",
+  "category": "system",
+  "tagline": "An emergency repair kit that still works when Leaf itself is broken, with optional AI help.",
+  "summary": "Doctor is a separate rescue tool that runs next to Leaf, not inside it. If Leaf crashes or won't start, you open Doctor in your web browser to see what is down, restart things, or ask Claude Code or Codex to investigate and fix it. It is not a chat assistant and not one of your Agents; you reach for it only when something is wrong.",
+  "whatYouGet": [
+    "A rescue page in your web browser that keeps working even when Leaf is down",
+    "Health checks, a one-click suite restart, and AI-assisted repair sessions",
+    "A Doctor section in Leaf's settings to manage the access token and options"
+  ],
+  "runsWhere": "hybrid",
+  "cost": {
+    "kind": "free",
+    "note": "Doctor is free. AI repair sessions use your own Claude Code or Codex account and its usage."
+  },
+  "privacy": "The rescue page is only reachable from this PC unless you set up your own Cloudflare Tunnel. During an AI repair, what Claude Code or Codex reads (logs, files, settings paths) goes to that provider.",
+  "requirements": [
+    {
+      "id": "ai-tool",
+      "kind": "software",
+      "label": "Claude Code or Codex",
+      "detail": "Only for AI-assisted repair. Install and sign in to one of them. Health checks and restart work without it."
+    },
+    {
+      "id": "doctor-running",
+      "kind": "software",
+      "label": "Doctor switched on",
+      "detail": "On by default. It starts by itself whenever Leaf starts.",
+      "check": "setting:enabled"
+    }
+  ],
+  "setup": [
+    {
+      "id": "make-token",
+      "title": "Create your access token",
+      "body": "Doctor asks for a token before it lets you in. Leaf never shows it to you, so create one now: open Doctor settings, go to Access, and choose Rotate. Copy the new token right away; it is shown only once. Keep it in a password manager.",
+      "check": "setting:access_token",
+      "action": { "kind": "open-settings", "section": "access" }
+    },
+    {
+      "id": "bookmark",
+      "title": "Bookmark the rescue page",
+      "body": "In your browser, open http://127.0.0.1:18899 (or the port shown in Doctor settings) and sign in with your token. Bookmark it, so you know where to go the day Leaf won't open.",
+      "action": { "kind": "open-settings", "section": "runtime" }
+    },
+    {
+      "id": "pick-ai",
+      "title": "Choose Claude Code or Codex",
+      "body": "In Doctor settings under Repair sessions, pick which AI tool does the repairs by default. You can also pick either one with its own button on the rescue page.",
+      "action": { "kind": "open-settings", "section": "repair" }
+    },
+    {
+      "id": "review-unrestricted",
+      "title": "Decide about unrestricted repair",
+      "body": "By default the AI may act without asking for approval at each step, so it can really fix things. If you want it to ask first, turn off the unrestricted repair option in Repair sessions.",
+      "check": "setting:dangerous_permissions",
+      "action": { "kind": "open-settings", "section": "repair" }
+    }
+  ],
+  "useCases": [
+    {
+      "id": "leaf-wont-open",
+      "title": "Leaf won't open this morning",
+      "story": "After a Windows update Leaf shows nothing. You open your Doctor bookmark, see which parts are down, and press Restart suite.",
+      "try": "Nova, remind me where my Doctor rescue page is and what I need to sign in, in case Leaf stops working."
+    },
+    {
+      "id": "ai-repair",
+      "title": "Let an AI work out what broke",
+      "story": "A restart didn't help. You start a Claude Code repair session from Doctor. It checks the logs, tries the fix, and reports every change. You can reply to it in the same page."
+    },
+    {
+      "id": "away-from-home",
+      "title": "Fix it from your phone",
+      "story": "If you've set up your own Cloudflare Tunnel, you can reach the rescue page from outside and restart Leaf while you're away.",
+      "try": "Nova, explain what I need to set up to reach Doctor when I'm away from home."
+    }
+  ],
+  "limitations": [
+    "Not a chat assistant: it only diagnoses and repairs the Leaf suite.",
+    "Your access token can't be read back later. If you lose it, create a new one from Doctor settings, which needs Leaf running.",
+    "Reaching it from outside your PC needs your own Cloudflare Tunnel and cloudflared; it is off by default.",
+    "Developer rebuilds only work if a rebuild script is set in Advanced settings; otherwise Doctor does a plain restart."
+  ],
+  "troubleshooting": [
+    {
+      "id": "page-wont-open",
+      "symptom": "The rescue page doesn't open",
+      "fix": "Check the port in Doctor settings (default 18899) and that Doctor is switched on. If Leaf itself is up, press Restart Doctor in Doctor settings.",
+      "check": "setting:enabled"
+    },
+    {
+      "id": "token-lost",
+      "symptom": "I lost my access token",
+      "fix": "Once Leaf is running, open Doctor settings, go to Access and choose Rotate to get a new one. Copy it straight away; it is shown only once.",
+      "check": "setting:access_token"
+    },
+    {
+      "id": "ai-wont-start",
+      "symptom": "The AI repair button does nothing useful",
+      "fix": "Make sure Claude Code or Codex is installed and signed in on this PC. If it's installed in an unusual place, set its location under Repair sessions."
+    },
+    {
+      "id": "restart-failed",
+      "symptom": "Restart suite says it failed",
+      "fix": "Start an AI repair session from the rescue page. It can read the logs and find out why Leaf won't come back."
+    }
+  ],
+  "agent": {
+    "whenToSuggest": "When the user asks how to recover Leaf if it crashes or won't start, wants a rescue page or remote restart, or wants AI-assisted repair of the suite."
+  }
+}

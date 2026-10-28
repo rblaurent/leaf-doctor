@@ -1,0 +1,83 @@
+{
+  "schema": "leaf.extension-guide-locale/1",
+  "lang": "fr",
+  "tagline": "Une trousse de secours qui marche même quand Leaf est cassé, avec une aide IA en option.",
+  "summary": "Doctor est un outil de secours à part, qui tourne à côté de Leaf et pas dedans. Si Leaf plante ou ne démarre plus, tu ouvres Doctor dans ton navigateur pour voir ce qui est en panne, tout relancer, ou demander à Claude Code ou Codex d'enquêter et de réparer. Ce n'est pas un assistant de discussion ni un de tes Agents : tu t'en sers seulement quand ça va mal.",
+  "whatYouGet": [
+    "Une page de secours dans ton navigateur, qui marche même quand Leaf est éteint",
+    "Des tests de santé, un redémarrage en un clic et des réparations assistées par IA",
+    "Une section Doctor dans les réglages de Leaf pour gérer le jeton d'accès et les options"
+  ],
+  "cost": {
+    "note": "Doctor est gratuit. Les réparations par IA utilisent ton propre compte Claude Code ou Codex et son quota."
+  },
+  "privacy": "La page de secours n'est joignable que depuis ce PC, sauf si tu configures ton propre Cloudflare Tunnel. Pendant une réparation IA, ce que Claude Code ou Codex lit (journaux, fichiers, chemins) part chez ce fournisseur.",
+  "limitations": [
+    "Ce n'est pas un assistant de discussion : il ne fait que diagnostiquer et réparer la suite Leaf.",
+    "Ton jeton d'accès ne peut pas être relu. Si tu le perds, crées-en un nouveau depuis les réglages de Doctor, ce qui demande que Leaf tourne.",
+    "Y accéder depuis l'extérieur demande ton propre Cloudflare Tunnel et cloudflared ; c'est désactivé par défaut.",
+    "Les reconstructions pour développeurs ne marchent que si un script est défini dans les réglages avancés ; sinon Doctor fait un simple redémarrage."
+  ],
+  "requirements": {
+    "ai-tool": {
+      "label": "Claude Code ou Codex",
+      "detail": "Seulement pour la réparation par IA. Installe-en un et connecte-toi. Les tests de santé et le redémarrage marchent sans."
+    },
+    "doctor-running": {
+      "label": "Doctor activé",
+      "detail": "Activé par défaut. Il démarre tout seul avec Leaf."
+    }
+  },
+  "setup": {
+    "make-token": {
+      "title": "Crée ton jeton d'accès",
+      "body": "Doctor te demande un jeton avant de te laisser entrer. Leaf ne te le montre jamais, donc crées-en un maintenant : ouvre les réglages de Doctor, va dans Access et choisis Rotate. Copie le nouveau jeton tout de suite, il ne s'affiche qu'une fois. Garde-le dans un gestionnaire de mots de passe."
+    },
+    "bookmark": {
+      "title": "Mets la page de secours en favori",
+      "body": "Dans ton navigateur, ouvre http://127.0.0.1:18899 (ou le port indiqué dans les réglages de Doctor) et connecte-toi avec ton jeton. Mets-la en favori pour savoir où aller le jour où Leaf ne s'ouvre plus."
+    },
+    "pick-ai": {
+      "title": "Choisis Claude Code ou Codex",
+      "body": "Dans les réglages de Doctor, section Repair sessions, choisis quel outil IA répare par défaut. Tu peux aussi utiliser l'un ou l'autre avec son propre bouton sur la page de secours."
+    },
+    "review-unrestricted": {
+      "title": "Décide pour la réparation sans restriction",
+      "body": "Par défaut, l'IA peut agir sans te demander confirmation à chaque étape, pour vraiment réparer. Si tu préfères qu'elle demande d'abord, désactive l'option de réparation sans restriction dans Repair sessions."
+    }
+  },
+  "useCases": {
+    "leaf-wont-open": {
+      "title": "Leaf ne s'ouvre pas ce matin",
+      "story": "Après une mise à jour de Windows, Leaf n'affiche rien. Tu ouvres ton favori Doctor, tu vois ce qui est en panne et tu appuies sur Restart suite.",
+      "try": "Nova, rappelle-moi où est ma page de secours Doctor et ce qu'il me faut pour m'y connecter, au cas où Leaf ne marche plus."
+    },
+    "ai-repair": {
+      "title": "Laisse une IA trouver ce qui est cassé",
+      "story": "Le redémarrage n'a rien changé. Tu lances une session de réparation Claude Code depuis Doctor. Elle lit les journaux, tente le correctif et te dit tout ce qu'elle a modifié. Tu peux lui répondre sur la même page."
+    },
+    "away-from-home": {
+      "title": "Répare depuis ton téléphone",
+      "story": "Si tu as configuré ton propre Cloudflare Tunnel, tu peux joindre la page de secours de l'extérieur et relancer Leaf même quand tu n'es pas chez toi.",
+      "try": "Nova, explique-moi ce qu'il faut configurer pour joindre Doctor quand je ne suis pas chez moi."
+    }
+  },
+  "troubleshooting": {
+    "page-wont-open": {
+      "symptom": "La page de secours ne s'ouvre pas",
+      "fix": "Vérifie le port dans les réglages de Doctor (18899 par défaut) et que Doctor est activé. Si Leaf tourne, appuie sur Restart Doctor dans les réglages de Doctor."
+    },
+    "token-lost": {
+      "symptom": "J'ai perdu mon jeton d'accès",
+      "fix": "Quand Leaf tourne, ouvre les réglages de Doctor, va dans Access et choisis Rotate pour en obtenir un nouveau. Copie-le tout de suite, il ne s'affiche qu'une fois."
+    },
+    "ai-wont-start": {
+      "symptom": "Le bouton de réparation IA ne fait rien d'utile",
+      "fix": "Vérifie que Claude Code ou Codex est installé et connecté sur ce PC. S'il est installé à un endroit inhabituel, indique son emplacement dans Repair sessions."
+    },
+    "restart-failed": {
+      "symptom": "Restart suite indique un échec",
+      "fix": "Lance une session de réparation IA depuis la page de secours. Elle peut lire les journaux et trouver pourquoi Leaf ne redémarre pas."
+    }
+  }
+}
