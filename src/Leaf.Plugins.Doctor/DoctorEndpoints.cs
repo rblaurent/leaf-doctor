@@ -15,7 +15,7 @@ internal static class DoctorEndpoints
             service = "Leaf Doctor extension",
             settings = "/api/extensions/doctor/settings",
             status = "/api/extensions/doctor/status",
-        }));
+        })).WithSummary("Returns the Doctor extension id and links to its settings and status routes.");
 
         group.MapGet("/discover", () => Results.Ok(new
         {
@@ -23,10 +23,11 @@ internal static class DoctorEndpoints
             role = "system-companion",
             settings = "/api/extensions/doctor/settings",
             actions = new[] { "restart-runtime", "rotate-access-token" },
-        }));
+        })).WithSummary("Returns the Doctor extension role, its settings link and the names of its recovery actions.");
 
         group.MapGet("/status", async (DoctorRuntimeService runtime, CancellationToken ct) =>
-            Results.Ok(await runtime.StatusAsync(ct)));
+            Results.Ok(await runtime.StatusAsync(ct)))
+            .WithSummary("Returns the current status of the detached Doctor recovery companion.");
 
         group.MapPost("/execution-token", async (
             HttpContext context,
@@ -54,7 +55,7 @@ internal static class DoctorEndpoints
             {
                 return Results.NotFound();
             }
-        });
+        }).WithSummary("Issues a 10 minute execution token for a Doctor coding agent session. Loopback callers only, needs the X-Doctor-Control header and a JSON body with sessionId (a UUID) and provider (claude or codex); any other caller or a wrong control key gets 404.");
 
     }
 }
