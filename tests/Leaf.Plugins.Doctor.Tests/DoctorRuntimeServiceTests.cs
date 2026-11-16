@@ -65,6 +65,7 @@ public sealed class DoctorRuntimeServiceTests
         var store = new StaticEntityStore(entity);
         return new DoctorRuntimeService(
             AppContext.BaseDirectory,
+            Path.Combine(Path.GetTempPath(), "doctor-runtime-service-tests"),
             "test",
             store,
             tokens,

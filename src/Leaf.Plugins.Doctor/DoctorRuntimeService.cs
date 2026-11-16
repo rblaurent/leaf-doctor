@@ -9,6 +9,7 @@ namespace Leaf.Plugins.Doctor;
 
 public sealed class DoctorRuntimeService(
     string pluginDirectory,
+    string dataDirectory,
     string pluginVersion,
     IEntityStore entities,
     IExecutionTokens executionTokens,
@@ -19,12 +20,10 @@ public sealed class DoctorRuntimeService(
         ["leaf-doctor.js", "dashboard.html", "doctor-prompt.md", "package.json"];
     private readonly SemaphoreSlim _gate = new(1, 1);
 
-    private string RootDirectory => Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-        "RedLeaf", "Doctor");
-    private string VersionsDirectory => Path.Combine(RootDirectory, "versions");
-    private string StateDirectory => Path.Combine(RootDirectory, "state");
-    private string StatePath => Path.Combine(StateDirectory, "launcher.json");
+    private readonly DoctorStorage _storage = new(dataDirectory);
+    private string VersionsDirectory => _storage.VersionsDirectory;
+    private string StateDirectory => _storage.StateDirectory;
+    private string StatePath => _storage.StatePath;
 
     public async Task EnsureDefaultsAsync(CancellationToken ct = default)
     {

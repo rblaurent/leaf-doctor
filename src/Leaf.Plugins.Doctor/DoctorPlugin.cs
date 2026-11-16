@@ -23,8 +23,13 @@ public sealed class DoctorPlugin : ILeafPlugin
 
     public void ConfigureServices(IServiceCollection services, PluginContext ctx)
     {
+        // Everything Doctor stores lives in the folder RedLeaf gives it; the folder Doctor used to pick moves in first.
+        var storage = new DoctorStorage(ctx.DataDirectory);
+        storage.MigrateLegacy();
+        services.AddSingleton(storage);
         services.AddSingleton(sp => new DoctorRuntimeService(
             ctx.PluginDirectory,
+            storage.DataDirectory,
             ctx.Manifest.Version ?? "workspace",
             sp.GetRequiredKeyedService<IEntityStore>(PluginId),
             sp.GetRequiredKeyedService<IExecutionTokens>(PluginId),
@@ -38,6 +43,7 @@ public sealed class DoctorPlugin : ILeafPlugin
 
     public async Task OnStartupAsync(IPluginHost host, CancellationToken ct)
     {
+        host.GetRequiredService<DoctorStorage>().LogMigration(host.GetRequiredService<ILoggerFactory>().CreateLogger("Leaf.Plugins.Doctor.Storage"));
         var runtime = host.GetRequiredService<DoctorRuntimeService>();
         await runtime.EnsureDefaultsAsync(ct);
         await runtime.EnsureRunningAsync(ct);
