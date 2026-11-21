@@ -5,7 +5,10 @@ import { spawnSync } from "node:child_process"
 import { fileURLToPath } from "node:url"
 
 const FULL_SHA = /^[a-f0-9]{40}$/
-const INPUT_KEYS = ["build", "classification", "dependencies", "inputType", "leafSdk", "locks", "redbamboo", "redleafReleaseToolCommit", "runtime", "runtimeRequirements", "schemaVersion", "targetPlatform", "toolchain"]
+// The release input names Doctor's dependencies (repository, source paths, inputs) and commits none of their
+// commits: the builder resolves RedLeaf (Leaf.Sdk and the ReleaseTool) and redbamboo-packages, passes them as
+// --redleaf-commit and --redbamboo-commit, and they are checked against the checkouts and recorded here.
+const INPUT_KEYS = ["build", "classification", "dependencies", "inputType", "leafSdk", "locks", "redbamboo", "runtime", "runtimeRequirements", "schemaVersion", "targetPlatform", "toolchain"]
 const PAYLOAD = [
   ["dashboard.html", "dashboard.html"],
   ["doctor-prompt.md", "doctor-prompt.md"],
@@ -87,18 +90,18 @@ function same(actual, expected, label) { if (canonical(actual) !== canonical(exp
 function addOptional(target, key, value) { if (value !== undefined && value !== null) target[key] = value }
 
 export function validateInput(input, manifest, packageJson, runtimeLock, repository) {
+  if (input && ("redleafReleaseToolCommit" in input || (input.leafSdk && "commit" in input.leafSdk) || (input.redbamboo && "commit" in input.redbamboo))) {
+    fail("Dependency commits are builder inputs (--redleaf-commit, --redbamboo-commit); release/producer-input.v1.json must not commit them.")
+  }
   exactKeys(input, INPUT_KEYS, "producer input")
   exactKeys(input.toolchain, ["dotnetSdk", "msbuild", "node", "pnpm"], "toolchain")
-  exactKeys(input.leafSdk, ["commit", "repository", "sourcePath"], "Leaf.Sdk")
-  exactKeys(input.redbamboo, ["commit", "inputs", "lockPath", "repository"], "RedBamboo")
+  exactKeys(input.leafSdk, ["repository", "sourcePath"], "Leaf.Sdk")
+  exactKeys(input.redbamboo, ["inputs", "lockPath", "repository"], "RedBamboo")
   exactKeys(input.build, ["backendProject", "frontendDirectory", "testProject"], "build")
   exactKeys(input.runtime, ["lockPath", "payload"], "runtime")
   exactKeys(input.targetPlatform, ["architecture", "operatingSystem"], "targetPlatform")
   if (input.schemaVersion !== 1 || input.inputType !== "leaf-doctor-extension-release-producer-input") fail("Unsupported producer input.")
   if (input.classification !== "protected") fail("Doctor must be a protected extension.")
-  exactCommit(input.redleafReleaseToolCommit, "RedLeaf release-tool pin")
-  exactCommit(input.leafSdk.commit, "Leaf.Sdk pin")
-  exactCommit(input.redbamboo.commit, "RedBamboo pin")
   if (input.leafSdk.repository !== "RedBamboo-Interactive/redleaf" || input.leafSdk.sourcePath !== "src/Leaf.Sdk") fail("Leaf.Sdk source identity is invalid.")
   if (input.redbamboo.repository !== "RedBamboo-Interactive/redbamboo-packages" || input.redbamboo.lockPath !== "pnpm-lock.yaml") fail("RedBamboo source identity is invalid.")
   if (input.targetPlatform.operatingSystem !== "windows" || input.targetPlatform.architecture !== "x64") fail("Doctor release target must be windows/x64.")
@@ -158,6 +161,18 @@ function validateRuntimeRequirements(values, version, repository) {
   if (node.management !== "managedByExtension" || node.requirement !== "required" || node.versionConstraint !== "22.23.4") fail("Bundled Node runtime contract drifted.")
 }
 
+// The builder-supplied dependency commits, each the exact HEAD of the checkout it names: Leaf.Sdk and the
+// ReleaseTool both come from the one supplied RedLeaf commit.
+export function checkDependencyCommits(supplied, checkouts) {
+  exactCommit(supplied.redleaf, "--redleaf-commit")
+  exactCommit(supplied.redbamboo, "--redbamboo-commit")
+  for (const [label, actual, expected] of [
+    ["Leaf.Sdk", checkouts.leafSdk, supplied.redleaf],
+    ["RedLeaf release tool", checkouts.redleaf, supplied.redleaf],
+    ["RedBamboo", checkouts.redbamboo, supplied.redbamboo],
+  ]) if (actual !== expected) fail(`The ${label} checkout is at ${actual}, but the builder supplied ${expected}.`)
+}
+
 export function buildMetadata(input, manifest, source) {
   const compatibility = { kernelApi: manifest.kernelApi }
   addOptional(compatibility, "computeApi", manifest.computeApi)
@@ -171,11 +186,11 @@ export function buildMetadata(input, manifest, source) {
     buildId: `source-${source.doctorCommit}`,
     builtAt: source.builtAt,
     repository: { id: manifest.id, repositoryUrl: source.doctorUrl, commit: source.doctorCommit },
-    toolchain: { ...input.toolchain, releaseTool: input.redleafReleaseToolCommit },
+    toolchain: { ...input.toolchain, releaseTool: source.redleafCommit },
     build: { backendProject: input.build.backendProject, frontendDirectory: input.build.frontendDirectory },
     buildInputs: [
-      { id: "leaf-sdk", repositoryUrl: source.leafSdkUrl, commit: input.leafSdk.commit, sourcePath: input.leafSdk.sourcePath },
-      ...input.redbamboo.inputs.map((item) => ({ id: item.id, repositoryUrl: source.redbambooUrl, commit: input.redbamboo.commit, sourcePath: item.sourcePath })),
+      { id: "leaf-sdk", repositoryUrl: source.leafSdkUrl, commit: source.redleafCommit, sourcePath: input.leafSdk.sourcePath },
+      ...input.redbamboo.inputs.map((item) => ({ id: item.id, repositoryUrl: source.redbambooUrl, commit: source.redbambooCommit, sourcePath: item.sourcePath })),
     ].sort((a, b) => a.id < b.id ? -1 : a.id > b.id ? 1 : 0),
     dependencyLocks: input.locks.map(({ id, ecosystem, path }) => ({ id, ecosystem, path })).sort((a, b) => a.path < b.path ? -1 : a.path > b.path ? 1 : 0),
     sboms: [],
@@ -229,7 +244,12 @@ function collect(get) {
   const expectedDoctorCommit = get("source-commit")
   exactCommit(expectedDoctorCommit, "Doctor source commit")
   if (doctorCommit !== expectedDoctorCommit) fail("Doctor checkout does not match github.workflow_sha.")
-  if (git(redbamboo, "rev-parse", "HEAD") !== input.redbamboo.commit || git(leafSdk, "rev-parse", "HEAD") !== input.leafSdk.commit || git(redleaf, "rev-parse", "HEAD") !== input.redleafReleaseToolCommit) fail("A source/tool checkout does not match its immutable pin.")
+  const supplied = { redleaf: get("redleaf-commit"), redbamboo: get("redbamboo-commit") }
+  checkDependencyCommits(supplied, {
+    leafSdk: git(leafSdk, "rev-parse", "HEAD"),
+    redleaf: git(redleaf, "rev-parse", "HEAD"),
+    redbamboo: git(redbamboo, "rev-parse", "HEAD"),
+  })
   git(leafSdk, "cat-file", "-e", `HEAD:${input.leafSdk.sourcePath}`)
   for (const item of input.redbamboo.inputs) git(redbamboo, "cat-file", "-e", `HEAD:${item.sourcePath}`)
   const sourceEpoch = get("source-date-epoch")
@@ -246,6 +266,8 @@ function collect(get) {
     doctorUrl: git(repository, "config", "--get", "remote.origin.url"),
     leafSdkUrl: git(leafSdk, "config", "--get", "remote.origin.url"),
     redbambooUrl: git(redbamboo, "config", "--get", "remote.origin.url"),
+    redleafCommit: supplied.redleaf,
+    redbambooCommit: supplied.redbamboo,
     builtAt: new Date(Number(sourceEpoch) * 1000).toISOString(),
   })
   return { input, manifest, metadata, lockFiles }

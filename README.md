@@ -54,10 +54,11 @@ install or own the process.
 
 The producer records only the shared source actually compiled: Leaf.Sdk and the
 RedBamboo UI/utility packages. AppHost is neither referenced nor recorded. It emits
-no SBOM, signature, registry entry, publication, or Stable/Nightly selection. The
-RedLeaf ReleaseTool and Leaf.Sdk source are both pinned to the audited immutable
-RedLeaf commit `4bf0894014b392e60cf0b5c6ca85920428ba7516` in
-`release/producer-input.v1.json`.
+no SBOM, signature, registry entry, publication, or Stable/Nightly selection.
+`release/producer-input.v1.json` commits no dependency commit: the builder (Release
+Manager, or the fallback workflow at dispatch) passes one RedLeaf commit, for both the
+ReleaseTool and Leaf.Sdk, and the redbamboo-packages commit as `--redleaf-commit` and
+`--redbamboo-commit`, and the metadata records exactly those.
 
 ## Development runtime
 

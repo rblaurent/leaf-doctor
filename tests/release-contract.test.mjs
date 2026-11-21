@@ -2,7 +2,7 @@ import assert from "node:assert/strict"
 import { readFileSync as readFileRaw } from "node:fs"
 import { resolve } from "node:path"
 import test from "node:test"
-import { buildMetadata, canonical, validateDescriptor, validateExactVersionOverride, validateInput } from "../scripts/release/metadata.mjs"
+import { buildMetadata, canonical, checkDependencyCommits, validateDescriptor, validateExactVersionOverride, validateInput } from "../scripts/release/metadata.mjs"
 
 const root = resolve(import.meta.dirname, "..")
 const readFileSync = (path, encoding) => {
@@ -16,7 +16,7 @@ const packageJson = readJson("web/package.json")
 const runtimePackageJson = readJson("package.json")
 const runtimeLock = readJson("release/doctor-runtime-lock.v1.json")
 const dotnetSdk = readJson("global.json")
-const centralRedLeafCommit = "21e6fd393196fbe2179293ff3f05cb3501ebeaed"
+const read = (path) => readFileSync(resolve(root, path), "utf8")
 
 test("cross-repository bridge retains the scoped producer token", () => {
   const workflow = readFileSync(resolve(root, ".github/workflows/release-candidate.yml"), "utf8")
@@ -52,43 +52,61 @@ test("producer declares Doctor's protected detached-runtime contract exactly", (
   assert.deepEqual(input.dependencies, [])
   assert.equal(input.leafSdk.repository, "RedBamboo-Interactive/redleaf")
   assert.equal(input.redbamboo.repository, "RedBamboo-Interactive/redbamboo-packages")
-  assert.equal(input.redbamboo.commit, "c3eb5ea34d269ec079d1e4c8365e966d8cb9abab")
+  assert.deepEqual(input.leafSdk, { repository: "RedBamboo-Interactive/redleaf", sourcePath: "src/Leaf.Sdk" })
+  assert.deepEqual(Object.keys(input.redbamboo).sort(), ["inputs", "lockPath", "repository"])
   assert.deepEqual(input.redbamboo.inputs.map((item) => item.name), ["@redbamboo/ui", "@redbamboo/utility"])
   assert.deepEqual(input.runtimeRequirements.map((item) => item.id), ["claude-code", "cloudflared", "codex", "doctor-runtime", "node"])
   assert.match(input.runtimeRequirements.find((item) => item.id === "doctor-runtime").interface, /GET \/health/)
   assert.equal(runtimeLock.node.executable.sha256, "dccc52de28d8df2ee22d2062424f8c563070d95d8ad70c54c4bf01d590dec14f")
 })
 
-test("ReleaseTool and Leaf.Sdk use the audited immutable RedLeaf commit", () => {
+test("ReleaseTool and Leaf.Sdk commits are builder inputs the producer input never commits", () => {
   assert.equal(dotnetSdk.sdk.version, input.toolchain.dotnetSdk)
   assert.equal(dotnetSdk.sdk.rollForward, "disable")
-  assert.equal(input.redleafReleaseToolCommit, centralRedLeafCommit)
-  assert.equal(input.leafSdk.commit, centralRedLeafCommit)
-  const malformed = structuredClone(input)
-  malformed.redleafReleaseToolCommit = "main"
-  assert.throws(() => validateInput(malformed, manifest, packageJson, runtimeLock, root), /full lowercase commit/)
+  assert.equal("redleafReleaseToolCommit" in input, false)
+  for (const pinned of [
+    { ...structuredClone(input), redleafReleaseToolCommit: "1".repeat(40) },
+    { ...structuredClone(input), leafSdk: { ...input.leafSdk, commit: "1".repeat(40) } },
+    { ...structuredClone(input), redbamboo: { ...input.redbamboo, commit: "2".repeat(40) } },
+  ]) assert.throws(() => validateInput(pinned, manifest, packageJson, runtimeLock, root), /builder inputs/)
+})
+
+test("the builder-supplied commits must be exact and name the checkouts that were built", () => {
+  const redleaf = "1".repeat(40)
+  const redbamboo = "2".repeat(40)
+  const checkouts = { leafSdk: redleaf, redleaf, redbamboo }
+  assert.doesNotThrow(() => checkDependencyCommits({ redleaf, redbamboo }, checkouts))
+  assert.throws(() => checkDependencyCommits({ redleaf: "main", redbamboo }, checkouts), /--redleaf-commit must be one full lowercase commit SHA/)
+  assert.throws(() => checkDependencyCommits({ redleaf, redbamboo: "A".repeat(40) }, checkouts), /--redbamboo-commit must be one full lowercase commit SHA/)
+  assert.throws(() => checkDependencyCommits({ redleaf, redbamboo }, { ...checkouts, leafSdk: "3".repeat(40) }), /Leaf\.Sdk checkout is at 3{40}, but the builder supplied 1{40}/)
+  assert.throws(() => checkDependencyCommits({ redleaf, redbamboo }, { ...checkouts, redleaf: "3".repeat(40) }), /RedLeaf release tool checkout/)
+  assert.throws(() => checkDependencyCommits({ redleaf, redbamboo }, { ...checkouts, redbamboo: "3".repeat(40) }), /RedBamboo checkout/)
 })
 
 test("metadata carries only genuine SDK and RedBamboo source inputs", () => {
-  const resolved = structuredClone(input)
-  resolved.redleafReleaseToolCommit = "1".repeat(40)
-  const metadata = buildMetadata(resolved, manifest, {
+  const metadata = buildMetadata(input, manifest, {
     doctorCommit: "2".repeat(40),
     doctorUrl: "https://github.com/rblaurent/leaf-doctor.git",
     leafSdkUrl: "https://github.com/RedBamboo-Interactive/redleaf.git",
     redbambooUrl: "https://github.com/RedBamboo-Interactive/redbamboo-packages.git",
+    redleafCommit: "1".repeat(40),
+    redbambooCommit: "3".repeat(40),
     builtAt: "2026-08-07T09:00:46.000Z",
   })
   assert.deepEqual(metadata.buildInputs.map((item) => item.id), ["leaf-sdk", "redbamboo-ui", "redbamboo-utility"])
+  // The builder-supplied commits are recorded exactly where the signed record and announcements read them.
+  assert.equal(metadata.toolchain.releaseTool, "1".repeat(40))
+  assert.deepEqual(metadata.buildInputs.map((item) => item.commit), ["1".repeat(40), "3".repeat(40), "3".repeat(40)])
   assert.doesNotMatch(canonical(metadata), /apphost|tree|subtree|registry|channel|signature/i)
   assert.equal(metadata.sbom, undefined)
   assert.deepEqual(metadata.sboms, [])
 })
 
 test("descriptor reconciliation retains private runtime payload without fake provision.json", () => {
-  const metadata = buildMetadata({ ...input, redleafReleaseToolCommit: "1".repeat(40) }, manifest, {
+  const metadata = buildMetadata(input, manifest, {
     doctorCommit: "2".repeat(40), doctorUrl: "https://example.invalid/doctor.git",
     leafSdkUrl: "https://example.invalid/redleaf.git", redbambooUrl: "https://example.invalid/redbamboo.git",
+    redleafCommit: "1".repeat(40), redbambooCommit: "3".repeat(40),
     builtAt: "2026-08-07T09:00:46.000Z",
   })
   const fakeFacts = { sizeBytes: 1, sha256: "a".repeat(64) }
@@ -155,7 +173,7 @@ test("serialized bridge appends only the exact immutable candidate pair", () => 
   assert.doesNotMatch(workflow, /actions\/(?:upload|download)-artifact@/)
   assert.match(workflow, /Join-Path \$PWD 'leaf-doctor\/artifacts\/handoff\/doctor-candidate\.unsigned\.json'/)
   assert.match(workflow, /tag = 'leaf-doctor-unsigned-candidates'/)
-  assert.doesNotMatch(workflow, /candidate_id:|candidateId = "doctor-\$\{\{ steps\.pins\.outputs\.version \}\}-\$\{\{ github\.workflow_sha \}\}"/)
+  assert.doesNotMatch(workflow, /candidate_id:|candidateId = "doctor-\$\{\{ steps\.producer\.outputs\.version \}\}-\$\{\{ github\.workflow_sha \}\}"/)
   assert.match(workflow, /\$candidateDocument = Get-Content -LiteralPath \$candidate -Raw \| ConvertFrom-Json/)
   assert.match(workflow, /candidateDocument\.status -cne 'unsigned'/)
   assert.match(workflow, /artifact\.PSObject\.Properties\['signature'\]/)
@@ -173,4 +191,24 @@ test("serialized bridge appends only the exact immutable candidate pair", () => 
   assert.match(workflow, /gh release upload \$tag --repo \$repository \$publishCandidate \$publishPackage/)
   assert.match(workflow, /gh release download \$tag --repo \$repository --pattern \$name --dir \$download/)
   assert.doesNotMatch(workflow, /--clobber|gh release delete|gh release delete-asset|id-token:/i)
+})
+
+test("release production builds against RedLeaf and RedBamboo main resolved at dispatch and recorded", () => {
+  const workflow = read(".github/workflows/release-candidate.yml")
+  assert.doesNotMatch(workflow, /redleafReleaseToolCommit|leafSdk\.commit|redbamboo\.commit|producer pin|steps\.pins/)
+  assert.match(workflow, /repository: RedBamboo-Interactive\/redbamboo-packages\n\s+ref: main\n\s+path: redbamboo-packages\n/)
+  assert.match(workflow, /repository: RedBamboo-Interactive\/redleaf\n\s+ref: main\n\s+path: redleaf-release\n/)
+  // Leaf.Sdk is the same RedLeaf commit as the release tool, never a second resolution of main.
+  assert.match(workflow, /repository: RedBamboo-Interactive\/redleaf\n\s+ref: \$\{\{ steps\.dependencies\.outputs\.redleaf \}\}\n\s+path: leaf-sdk\n/)
+  assert.ok(workflow.indexOf("path: leaf-sdk") > workflow.indexOf("id: dependencies"))
+  assert.match(workflow, /\$redleaf = \(git -C redleaf-release rev-parse HEAD\)\.Trim\(\)/)
+  assert.match(workflow, /\$redbamboo = \(git -C redbamboo-packages rev-parse HEAD\)\.Trim\(\)/)
+  assert.match(workflow, /GITHUB_STEP_SUMMARY/)
+  // Both metadata modes receive the resolved commits, through the environment rather than an expression.
+  for (const mode of ["generate", "validate"]) {
+    const step = workflow.slice(workflow.indexOf(`node scripts/release/metadata.mjs ${mode}`))
+    assert.match(step.slice(0, step.indexOf("\n\n")), /--redleaf-commit \$env:REDLEAF_COMMIT `\n\s+--redbamboo-commit \$env:REDBAMBOO_COMMIT `/)
+  }
+  assert.equal((workflow.match(/REDLEAF_COMMIT: \$\{\{ steps\.dependencies\.outputs\.redleaf \}\}/g) ?? []).length, 2)
+  assert.equal((workflow.match(/REDBAMBOO_COMMIT: \$\{\{ steps\.dependencies\.outputs\.redbamboo \}\}/g) ?? []).length, 2)
 })
