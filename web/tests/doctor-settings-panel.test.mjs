@@ -82,8 +82,9 @@ test("the revealed token is the design-system Input, labelled, focusable, with a
   assert.match(input, new RegExp(`value="${TOKEN}"`))
   const noticeId = input.match(/aria-describedby="([^"]+)"/)?.[1]
   assert.ok(noticeId)
-  assert.match(access, new RegExp(`id="${noticeId}"[^>]*>Shown only once\\. Copy it now\\.<`))
-  assert.match(access, /<button[^>]*data-slot="protected-value-copy"[^>]*>.*Copy token<\/button>/)
+  // The notice and the copy label are the shared ProtectedValueField's own (redbamboo-packages 98c5731 wording).
+  assert.match(access, new RegExp(`id="${noticeId}"[^>]*>(?:<i[^>]*></i>)?Shown once\\. After you leave, nobody can read it again\\.<`))
+  assert.match(access, /<button[^>]*data-slot="protected-value-copy"[^>]*>.*Copy<\/button>/)
   assert.doesNotMatch(access, /\b(below|above)\b/i, "wording must not depend on layout direction")
   assert.doesNotMatch(access, />New access token</, "capable hosts do not render the fallback row")
 })
