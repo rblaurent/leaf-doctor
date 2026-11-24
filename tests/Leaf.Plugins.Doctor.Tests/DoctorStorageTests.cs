@@ -78,9 +78,16 @@ public sealed class DoctorStorageTests : IDisposable
     }
 
     [Fact]
-    public void The_manifest_requires_a_kernel_that_has_the_data_directory()
+    public void The_manifest_requires_a_kernel_that_has_the_data_directory_and_the_detached_child_hook()
     {
         var kernelApi = new DoctorPlugin().Manifest.KernelApi;
-        Assert.Equal("^0.1.13", kernelApi);
+        Assert.Equal("^0.1.17", kernelApi);
+    }
+
+    [Fact]
+    public void Doctor_is_a_detached_child_host_so_a_data_move_can_stop_it()
+    {
+        // Phase 5b P5-F1: Doctor's node.exe runs from versions/<ver> inside the data folder; the kernel asks the plugin to stop it.
+        Assert.IsAssignableFrom<Leaf.Sdk.IDetachedChildHost>(new DoctorPlugin());
     }
 }

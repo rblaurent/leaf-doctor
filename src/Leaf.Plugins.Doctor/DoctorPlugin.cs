@@ -7,7 +7,7 @@ using Microsoft.Extensions.Logging;
 
 namespace Leaf.Plugins.Doctor;
 
-public sealed class DoctorPlugin : ILeafPlugin
+public sealed class DoctorPlugin : ILeafPlugin, IDetachedChildHost
 {
     public const string PluginId = "doctor";
 
@@ -40,6 +40,14 @@ public sealed class DoctorPlugin : ILeafPlugin
     }
 
     public void MapEndpoints(RouteGroupBuilder group) => DoctorEndpoints.Map(group);
+
+    /// <summary>Doctor is a detached companion that runs from this plugin's data folder; a data move stops it and the next boot starts it again.</summary>
+    public Task StopDetachedChildrenAsync(IPluginHost host, CancellationToken ct)
+        => host.GetRequiredService<DoctorRuntimeService>().StopForRelocationAsync(ct);
+
+    /// <summary>A data move that stopped Doctor but did not end in the kernel stopping: start it again from where the data folder still is.</summary>
+    public Task StartDetachedChildrenAsync(IPluginHost host, CancellationToken ct)
+        => host.GetRequiredService<DoctorRuntimeService>().EnsureRunningAsync(ct);
 
     public async Task OnStartupAsync(IPluginHost host, CancellationToken ct)
     {

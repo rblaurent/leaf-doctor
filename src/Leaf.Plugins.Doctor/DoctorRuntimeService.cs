@@ -134,6 +134,30 @@ public sealed class DoctorRuntimeService(
         }
     }
 
+    /// <summary>
+    /// Stops the detached Doctor process before RedLeaf's data folder moves (<see cref="Leaf.Sdk.IDetachedChildHost"/>): it runs from
+    /// <c>versions/&lt;version&gt;</c> inside the plugin's data folder, which is being copied. Doctor starts again from wherever the
+    /// folder is when the kernel next runs <see cref="EnsureRunningAsync"/>. Nothing running is not an error.
+    /// </summary>
+    public async Task StopForRelocationAsync(CancellationToken ct = default)
+    {
+        await _gate.WaitAsync(ct);
+        try
+        {
+            var config = await GetConfigAsync(ct);
+            var port = ReadLauncherState()?["port"]?.GetValue<int?>() ?? config.Port;
+            if (await ReadHealthAsync(port, ct) is null) return;
+            if (!await ShutdownAsync(port, config.ControlKey, ct))
+                throw new InvalidOperationException($"Doctor is running on port {port} but rejected the authenticated shutdown");
+            await WaitUntilStoppedAsync(port, ct);
+            logger.LogInformation("Doctor stopped on port {Port} so RedLeaf's data folder can move", port);
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
     public async Task RestartAsync(CancellationToken ct = default)
     {
         await _gate.WaitAsync(ct);
@@ -295,6 +319,10 @@ public sealed class DoctorRuntimeService(
 
         using var process = Process.Start(psi)
             ?? throw new InvalidOperationException("Process.Start returned null for Doctor");
+        // Recorded in launcher.json: RedLeaf's launcher identifies Doctor's process by this pid and start time when the data folder moves,
+        // even when the node it runs lives outside the data folder (a configured node_path or the PATH one).
+        try { _launched = (process.Id, process.StartTime.ToUniversalTime().Ticks); }
+        catch (Exception ex) when (ex is InvalidOperationException or System.ComponentModel.Win32Exception) { _launched = null; }
         await process.StandardInput.WriteAsync(runtimeConfig.ToJsonString().AsMemory(), ct);
         process.StandardInput.Close();
     }
@@ -443,6 +471,9 @@ public sealed class DoctorRuntimeService(
         return false;
     }
 
+    /// <summary>The process this service just launched (pid, start time in UTC ticks), until the next launcher state is written.</summary>
+    private (int Pid, long StartedTicks)? _launched;
+
     private JsonObject? ReadLauncherState()
     {
         try
@@ -470,6 +501,19 @@ public sealed class DoctorRuntimeService(
             ["running"] = running,
             ["updatedAt"] = DateTimeOffset.UtcNow.ToString("O"),
         };
+        if (running)
+        {
+            // The process just launched, else the one the previous state named (an adopted, already healthy Doctor keeps its own).
+            var previous = ReadLauncherState();
+            var pid = _launched?.Pid ?? previous?["pid"]?.GetValue<int?>();
+            var started = _launched?.StartedTicks ?? previous?["processStartedAtUtcTicks"]?.GetValue<long?>();
+            if (pid is not null && started is not null)
+            {
+                state["pid"] = pid;
+                state["processStartedAtUtcTicks"] = started;
+            }
+        }
+        _launched = null;
         var temp = StatePath + ".tmp";
         File.WriteAllText(temp, state.ToJsonString());
         File.Move(temp, StatePath, overwrite: true);
