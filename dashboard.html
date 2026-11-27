@@ -242,6 +242,45 @@
 
   [data-slot="card-content"] { padding: 0 16px; }
 
+  .status-history { display: grid; gap: 12px; padding: 0 16px; }
+  .status-history__scroll { overflow-x: auto; padding: 3px; }
+  .status-history__period { min-width: 627px; }
+  .status-history__chart {
+    display: grid;
+    grid-template-columns: repeat(30, minmax(18px, 1fr));
+    gap: 3px;
+  }
+  .status-history__day {
+    height: 28px;
+    padding: 0;
+    border: 0;
+    border-radius: 3px;
+    background: var(--input);
+    cursor: pointer;
+  }
+  .status-history__day[data-state="up"] { background: var(--primary); }
+  .status-history__day[data-state="down"] { background: var(--destructive); }
+  .status-history__day[aria-pressed="true"],
+  .status-history__day:focus-visible { outline: 2px solid var(--contrast); outline-offset: 1px; }
+  .status-history__dates, .status-history__legend {
+    display: flex;
+    justify-content: space-between;
+    gap: 8px 14px;
+    flex-wrap: wrap;
+    font-size: 12px;
+    color: var(--muted-foreground);
+  }
+  .status-history__dates { margin-top: 6px; }
+  .status-history__legend { justify-content: flex-start; }
+  .status-history__legend span { display: inline-flex; align-items: center; gap: 6px; }
+  .status-history__swatch { width: 8px; height: 8px; border-radius: 2px; background: var(--input); }
+  .status-history__swatch--up { background: var(--primary); }
+  .status-history__swatch--down { background: var(--destructive); }
+  .status-history__details { display: grid; gap: 5px; margin: 0; font-size: 13px; }
+  .status-history__details > p, .status-history__details > ul { margin: 0; }
+  .status-history__details > ul { padding-inline-start: 20px; }
+
+
   [data-slot="badge"] {
     display: inline-flex;
     width: fit-content;
@@ -551,6 +590,29 @@
       <div data-slot="item-list" class="service-list" id="services"></div>
     </section>
 
+    <section data-slot="card" aria-labelledby="status-history-title">
+      <div data-slot="card-header">
+        <div>
+          <div data-slot="card-title" id="status-history-title">Outage history</div>
+          <div data-slot="card-description">RedLeaf and RedCompute over the last 30 days</div>
+        </div>
+      </div>
+      <div class="status-history">
+        <div class="status-history__scroll" id="status-history-scroll">
+          <div class="status-history__period">
+            <div class="status-history__chart" id="status-history-chart" role="group" aria-label="Daily outage history"></div>
+            <div class="status-history__dates" aria-hidden="true"><span>29 days ago</span><span>Today</span></div>
+          </div>
+        </div>
+        <div class="status-history__legend">
+          <span><i class="status-history__swatch status-history__swatch--up" aria-hidden="true"></i>Responding</span>
+          <span><i class="status-history__swatch status-history__swatch--down" aria-hidden="true"></i>Outage observed</span>
+          <span><i class="status-history__swatch" aria-hidden="true"></i>No checks</span>
+        </div>
+        <div class="status-history__details" id="status-history-details" aria-live="polite">Loading history...</div>
+      </div>
+    </section>
+
     <section data-slot="card" aria-labelledby="recovery-title">
       <div data-slot="card-header">
         <div>
@@ -677,9 +739,99 @@ function renderServices(data) {
   document.getElementById('timestamp').textContent = `Checked ${new Date(data.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
 }
 
+const historyChart = document.getElementById('status-history-chart');
+const historyDetails = document.getElementById('status-history-details');
+const historyDateFormat = new Intl.DateTimeFormat(undefined, { dateStyle: 'full' });
+const historyTimeFormat = new Intl.DateTimeFormat(undefined, { hour: '2-digit', minute: '2-digit' });
+const historyLabels = { up: 'All recorded checks passed', down: 'Outage observed', unknown: 'No checks recorded' };
+let historyDays = [];
+let selectedHistoryDay;
+let renderedHistory;
+
+function selectHistoryDay(index, focus = false) {
+  const day = historyDays[index];
+  if (!day) return;
+  selectedHistoryDay = day.from;
+  for (const [position, button] of [...historyChart.children].entries()) {
+    button.setAttribute('aria-pressed', String(position === index));
+    button.tabIndex = position === index ? 0 : -1;
+  }
+  const title = document.createElement('strong');
+  title.textContent = historyDateFormat.format(day.from);
+  const summary = document.createElement('p');
+  summary.textContent = day.historyMessage ?? historyLabels[day.state];
+  historyDetails.replaceChildren(title, summary);
+  if (day.outages.length > 0) {
+    const list = document.createElement('ul');
+    for (const span of day.outages) {
+      const item = document.createElement('li');
+      const services = [span.redleaf ? '' : 'RedLeaf', span.redcompute ? '' : 'RedCompute'].filter(Boolean);
+      const first = historyTimeFormat.format(Math.max(span.from, day.from));
+      const last = historyTimeFormat.format(Math.min(span.through, day.until - 1));
+      const range = first === last ? first : first + '\u2013' + last;
+      item.textContent = range + ' \u00b7 ' + services.join(' and ') + ' unreachable';
+      list.append(item);
+    }
+    historyDetails.append(list);
+  }
+  if (focus) historyChart.children[index].focus();
+}
+
+function renderStatusHistory(data) {
+  const spans = Array.isArray(data.statusHistory) ? data.statusHistory : [];
+  const today = new Date(data.timestamp);
+  today.setHours(0, 0, 0, 0);
+  const snapshot = JSON.stringify([today.getTime(), spans]);
+  if (snapshot === renderedHistory) return;
+  renderedHistory = snapshot;
+  const hadButtons = historyChart.childElementCount > 0;
+  const chartHadFocus = historyChart.contains(document.activeElement);
+  historyDays = Array.from({ length: 30 }, (_, index) => {
+    const from = new Date(today);
+    from.setDate(today.getDate() + index - 29);
+    const until = new Date(from);
+    until.setDate(from.getDate() + 1);
+    const checks = spans.filter(span => span.from < until.getTime() && span.through >= from.getTime());
+    const outages = checks.filter(span => !span.redleaf || !span.redcompute);
+    const state = outages.length > 0 ? 'down' : checks.length > 0 ? 'up' : 'unknown';
+    const historyMessage = spans.length === 0 && index === 29 ? 'Doctor is waiting for its first recorded check.' : undefined;
+    return { from: from.getTime(), until: until.getTime(), outages, state, historyMessage };
+  });
+
+  const buttons = historyDays.map((day, index) => {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'status-history__day';
+    button.dataset.state = day.state;
+    button.title = historyDateFormat.format(day.from) + ' \u00b7 ' + historyLabels[day.state];
+    button.setAttribute('aria-label', button.title);
+    button.addEventListener('click', () => selectHistoryDay(index));
+    return button;
+  });
+  historyChart.replaceChildren(...buttons);
+  const selected = historyDays.findIndex(day => day.from === selectedHistoryDay);
+  selectHistoryDay(selected < 0 ? historyDays.length - 1 : selected, chartHadFocus);
+  if (!hadButtons) {
+    const chartScroll = document.getElementById('status-history-scroll');
+    chartScroll.scrollLeft = chartScroll.scrollWidth;
+  }
+}
+
+historyChart.addEventListener('keydown', event => {
+  const index = [...historyChart.children].indexOf(event.target);
+  if (index < 0) return;
+  const last = historyDays.length - 1;
+  const choices = { ArrowLeft: Math.max(0, index - 1), ArrowRight: Math.min(last, index + 1), Home: 0, End: last };
+  if (!Object.hasOwn(choices, event.key)) return;
+  event.preventDefault();
+  selectHistoryDay(choices[event.key], true);
+});
+
 async function refresh() {
   try {
-    renderServices(await api('/status'));
+    const status = await api('/status');
+    renderServices(status);
+    renderStatusHistory(status);
   } catch {
     const overall = document.getElementById('overall');
     overall.className = 'badge--down';

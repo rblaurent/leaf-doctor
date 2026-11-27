@@ -7,7 +7,7 @@ const { spawn } = require('node:child_process');
 const http = require('node:http');
 const os = require('node:os');
 
-const { buildDoctorLaunch, createSecretRedactor, normalizeConfig } = require('./leaf-doctor');
+const { appendStatusCheck, buildDoctorLaunch, createSecretRedactor, normalizeConfig } = require('./leaf-doctor');
 
 const config = {
   paths: {
@@ -82,6 +82,27 @@ test('resumes the exact provider session for follow-up messages', () => {
     '--json',
     session.providerSessionId,
     '-',
+  ]);
+});
+
+test('status history keeps observed outages and leaves monitoring gaps uncovered', () => {
+  const minute = 60_000;
+  const start = Date.UTC(2026, 10, 27, 11, 0);
+  let history = appendStatusCheck([], start, true, true);
+  history = appendStatusCheck(history, start + minute, true, false);
+  history = appendStatusCheck(history, start + 2 * minute, true, false);
+  history = appendStatusCheck(history, start + 6 * minute, true, false);
+  history = appendStatusCheck(history, start + 7 * minute, true, true);
+  assert.deepEqual(history, [
+    { from: start, through: start, redleaf: true, redcompute: true },
+    { from: start + minute, through: start + 2 * minute, redleaf: true, redcompute: false },
+    { from: start + 6 * minute, through: start + 6 * minute, redleaf: true, redcompute: false },
+    { from: start + 7 * minute, through: start + 7 * minute, redleaf: true, redcompute: true },
+  ]);
+
+  const later = start + 32 * 24 * 60 * minute;
+  assert.deepEqual(appendStatusCheck(history, later, true, true), [
+    { from: later, through: later, redleaf: true, redcompute: true },
   ]);
 });
 

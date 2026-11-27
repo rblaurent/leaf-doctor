@@ -347,6 +347,7 @@ public sealed class DoctorRuntimeService(
                 && File.Exists(rebuildScript),
             ["paths"] = new JsonObject
             {
+                ["statusHistory"] = Path.Combine(StateDirectory, "status-history.json"),
                 ["redleafExe"] = redLeafExe,
                 ["redcomputeExe"] = config.RedComputeExe,
                 ["cloudflared"] = config.CloudflaredPath,

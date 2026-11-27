@@ -149,11 +149,72 @@ function checkPostgres(port) {
   });
 }
 
+const STATUS_HISTORY_INTERVAL_MS = 60_000;
+const STATUS_HISTORY_MAX_GAP_MS = 2 * STATUS_HISTORY_INTERVAL_MS;
+const STATUS_HISTORY_RETENTION_MS = 31 * 24 * 60 * 60 * 1000;
+let statusHistory = [];
+let statusHistoryTimer;
+let statusHistoryStopping = false;
+
+function readStatusHistory(file) {
+  if (!file) return [];
+  try {
+    const record = JSON.parse(fs.readFileSync(file, 'utf8'));
+    if (record.version === 1 && Array.isArray(record.spans)) {
+      return record.spans.filter(span => span && Number.isFinite(span.from)
+        && Number.isFinite(span.through) && span.from <= span.through
+        && typeof span.redleaf === 'boolean' && typeof span.redcompute === 'boolean');
+    }
+  } catch (error) {
+    if (error.code !== 'ENOENT') console.warn('Doctor could not read status history:', error.code || error.name);
+  }
+  return [];
+}
+
+function appendStatusCheck(history, at, redleaf, redcompute) {
+  const cutoff = at - STATUS_HISTORY_RETENTION_MS;
+  const spans = history.filter(span => span.through >= cutoff && span.through <= at);
+  const last = spans.at(-1);
+  if (last && at - last.through <= STATUS_HISTORY_MAX_GAP_MS
+    && last.redleaf === redleaf && last.redcompute === redcompute) {
+    spans[spans.length - 1] = { ...last, from: Math.max(last.from, cutoff), through: at };
+  } else {
+    spans.push({ from: at, through: at, redleaf, redcompute });
+  }
+  return spans;
+}
+
+function checkCoreServices(services) {
+  return Promise.all([
+    ping(services.redleaf.port, services.redleaf.pingPath),
+    ping(services.redcompute.port, services.redcompute.pingPath),
+  ]);
+}
+
+async function recordStatusCheck() {
+  const services = config.services;
+  const file = config.paths.statusHistory;
+  try {
+    if (!services.redleaf || !services.redcompute) return;
+    const [redleaf, redcompute] = await checkCoreServices(services);
+    if (statusHistoryStopping || config.services !== services) return;
+    statusHistory = appendStatusCheck(statusHistory, Date.now(), redleaf, redcompute);
+    if (!file) return;
+    const pending = file + '.' + process.pid + '.tmp';
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(pending, JSON.stringify({ version: 1, spans: statusHistory }));
+    fs.renameSync(pending, file);
+  } catch (error) {
+    console.warn('Doctor could not record a status check:', error.code || error.name);
+  } finally {
+    if (!statusHistoryStopping) statusHistoryTimer = setTimeout(recordStatusCheck, STATUS_HISTORY_INTERVAL_MS);
+  }
+}
+
 async function getStatus() {
   const svc = config.services;
-  const [redleaf, redcompute, nova, codered] = await Promise.all([
-    ping(svc.redleaf.port, svc.redleaf.pingPath),
-    ping(svc.redcompute.port, svc.redcompute.pingPath),
+  const [[redleaf, redcompute], nova, codered] = await Promise.all([
+    checkCoreServices(svc),
     ping(svc.nova.port, svc.nova.pingPath),
     pingAlive(svc.codered.port, svc.codered.pingPath),
   ]);
@@ -182,6 +243,7 @@ async function getStatus() {
       tunnel: { up: tunnelRunning },
     },
     allHealthy: postgres && redleaf && redcompute && nova && codered && apisOk,
+    statusHistory,
   };
 }
 
@@ -780,6 +842,9 @@ const server = http.createServer(async (req, res) => {
       const restartRequired = next.port !== config.port || next.bindAddress !== config.bindAddress;
       const tunnelChanged = JSON.stringify(next.tunnel) !== JSON.stringify(config.tunnel)
         || next.paths?.cloudflared !== config.paths?.cloudflared;
+      if (next.paths.statusHistory !== config.paths.statusHistory) {
+        statusHistory = readStatusHistory(next.paths.statusHistory);
+      }
       config = next;
       if (tunnelChanged && !restartRequired) restartTunnel();
       res.writeHead(200, { 'Content-Type': 'application/json' });
@@ -1007,6 +1072,8 @@ function restartTunnel() {
 }
 
 function shutdown() {
+  statusHistoryStopping = true;
+  clearTimeout(statusHistoryTimer);
   console.log('Shutting down...');
   if (tunnelProc) {
     tunnelProc.kill();
@@ -1022,12 +1089,15 @@ if (require.main === module) {
   server.listen(config.port, config.bindAddress, () => {
     console.log(`Leaf Doctor running on port ${config.port}`);
     console.log(`Dashboard: http://127.0.0.1:${config.port}/`);
+    statusHistory = readStatusHistory(config.paths.statusHistory);
+    void recordStatusCheck();
     startTunnel();
   });
 }
 
 module.exports = {
   DOCTOR_PROVIDERS,
+  appendStatusCheck,
   buildDoctorLaunch,
   checkControl,
   createSecretRedactor,
